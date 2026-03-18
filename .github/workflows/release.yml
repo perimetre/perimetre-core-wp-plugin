@@ -35,7 +35,8 @@ jobs:
             --exclude=".github/*" \
             --exclude="dist/*" \
             --exclude="*.DS_Store" \
-            --exclude="*.gitignore"
+            --exclude="*.gitignore" \
+            --exclude="CLAUDE.md"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
