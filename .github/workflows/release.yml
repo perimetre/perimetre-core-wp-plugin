@@ -29,14 +29,9 @@ jobs:
 
       - name: Build plugin zip
         run: |
-          mkdir -p dist
-          zip -r dist/perimetre-core-${{ steps.version.outputs.VERSION }}.zip . \
-            --exclude="*.git*" \
-            --exclude=".github/*" \
-            --exclude="dist/*" \
-            --exclude="*.DS_Store" \
-            --exclude="*.gitignore" \
-            --exclude="CLAUDE.md"
+          mkdir -p dist/perimetre-core
+          rsync -a --exclude='.git' --exclude='.github' --exclude='dist' --exclude='.DS_Store' --exclude='.gitignore' --exclude='CLAUDE.md' . dist/perimetre-core/
+          cd dist && zip -r perimetre-core-${{ steps.version.outputs.VERSION }}.zip perimetre-core/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
