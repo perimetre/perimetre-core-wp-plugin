@@ -25,6 +25,12 @@ Push a semver tag to trigger the GitHub Actions release workflow, which builds a
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
+**When making changes that warrant a version bump**, update all three locations:
+
+1. `Version:` header in `perimetre-core.php`
+2. **Current Version** section in `README.md`
+3. **Changelog** section in `README.md` (add a new entry above previous versions)
+
 ## Architecture
 
 **Entry point:** `perimetre-core.php` — loads autoloader, hooks `Blocks\Registry::register` on `init` (priority 5) and `GraphQL\Registry::register` on `graphql_register_types`.
