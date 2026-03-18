@@ -302,6 +302,25 @@ The old block in Project Core can remain under its project namespace — both co
 
 ---
 
+## Current Version
+
+**1.0.0**
+
+Update this when bumping the version in `perimetre-core.php`.
+
+---
+
+## Changelog
+
+### 1.0.0
+
+- Initial release
+- Abstract base classes for ACF blocks and native blocks
+- Block registry for centralized registration
+- GraphQL registry with naming convention enforcement
+
+---
+
 ## Development
 
 After cloning, install the autoloader:
