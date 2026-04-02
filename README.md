@@ -74,7 +74,7 @@ wp plugin install /path/to/perimetre-core-1.2.0.zip --activate
 
 Record the installed version in the project's `plugins.md`.
 
-To update, download the new release zip, install it (WordPress will replace the existing version), test on staging, then repeat on production.
+Updates are detected automatically via GitHub Releases. When a new version is published, WordPress will show an update notice in the admin dashboard, allowing one-click updates. You can also update manually by downloading the release zip and installing it.
 
 ---
 
@@ -83,7 +83,7 @@ To update, download the new release zip, install it (WordPress will replace the 
 ```
 perimetre-core/
 ├── perimetre-core.php          Plugin entry point. Loads autoloader, bootstraps registries.
-├── composer.json               Autoloading only — no third-party dependencies.
+├── composer.json               Autoloading and Plugin Update Checker dependency.
 ├── composer.lock
 ├── vendor/
 │   └── autoload.php            Generated autoloader. Committed to the repository.
@@ -386,13 +386,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.1.0**
+**1.2.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.2.0
+
+- Add automatic plugin updates from GitHub Releases via Plugin Update Checker
 
 ### 1.1.0
 
@@ -415,7 +419,7 @@ After cloning, install the autoloader:
 composer install
 ```
 
-No other dependencies are installed. Composer is used only to generate `vendor/autoload.php`.
+This also installs [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker) for automatic updates from GitHub Releases.
 
 To regenerate the autoloader after adding new classes:
 
