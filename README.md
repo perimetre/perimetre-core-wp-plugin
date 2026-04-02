@@ -88,6 +88,8 @@ perimetre-core/
 ├── vendor/
 │   └── autoload.php            Generated autoloader. Committed to the repository.
 ├── src/
+│   ├── Acf/
+│   │   └── cta-fields.php      Helper functions for CTA and CTA Group ACF fields.
 │   ├── Blocks/
 │   │   ├── Registry.php        Central block registry. Used by Project Core to register blocks.
 │   │   ├── AcfBlock.php        Abstract base class for ACF blocks.
@@ -267,6 +269,86 @@ Field names must be `camelCase`. Type names must be `PascalCase`. Violations tri
 
 ---
 
+## CTA Field Helpers
+
+Perimetre Core provides two helper functions for registering CTA (Call-to-Action) fields, so every project uses the same field structure.
+
+### `perimetre_cta_fields`
+
+Returns ACF sub-fields for a single CTA: a link field and a variant select.
+
+```php
+perimetre_cta_fields(
+    string $prefix = 'cta',
+    array  $variants = ['default' => 'Default', 'primary' => 'Primary', 'secondary' => 'Secondary'],
+): array
+```
+
+### `perimetre_cta_group_fields`
+
+Returns a tab + repeater of CTAs, ready to spread into a field group's `fields` array.
+
+```php
+perimetre_cta_group_fields(
+    string $prefix   = 'cta_group',
+    string $label    = 'CTAs',
+    int    $min      = 0,
+    int    $max      = 3,
+    array  $variants = ['default' => 'Default', 'primary' => 'Primary', 'secondary' => 'Secondary'],
+): array
+```
+
+### Usage
+
+Spread the result into your ACF field group's `fields` array:
+
+```php
+'fields' => [
+    [
+        'key'   => 'field_micro_bird_hero_heading',
+        'label' => 'Heading',
+        'name'  => 'heading',
+        'type'  => 'text',
+    ],
+    ...perimetre_cta_group_fields('hero_ctas', 'Hero CTAs'),
+],
+```
+
+To customize variants or limits:
+
+```php
+...perimetre_cta_group_fields(
+    prefix:   'hero_ctas',
+    label:    'Hero CTAs',
+    min:      1,
+    max:      2,
+    variants: ['primary' => 'Primary', 'ghost' => 'Ghost'],
+),
+```
+
+### Template example
+
+```php
+$ctas = get_field('hero_ctas');
+
+if ($ctas) : ?>
+    <div class="cta-group">
+        <?php foreach ($ctas as $cta) :
+            $link    = $cta['hero_ctas_item_link'];
+            $variant = $cta['hero_ctas_item_variant'];
+            if ($link) : ?>
+                <a href="<?= esc_url($link['url']) ?>"
+                   class="btn btn--<?= esc_attr($variant) ?>"
+                   target="<?= esc_attr($link['target']) ?>">
+                    <?= esc_html($link['title']) ?>
+                </a>
+        <?php endif; endforeach; ?>
+    </div>
+<?php endif; ?>
+```
+
+---
+
 ## Naming Conventions
 
 | Concept | Convention | Example |
@@ -304,13 +386,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.0.0**
+**1.1.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.1.0
+
+- Add CTA field helpers (`perimetre_cta_fields`, `perimetre_cta_group_fields`)
 
 ### 1.0.0
 
