@@ -28,6 +28,7 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 - Provides a central block registry that Project Core uses to register all blocks
 - Provides GraphQL registration utilities that enforce naming conventions
 - Hosts shared blocks that are used across multiple projects (grows over time)
+- Provides a configurable status / health-check endpoint (DB, object cache, cron)
 
 What it does **not** do:
 
@@ -88,6 +89,7 @@ perimetre-core/
 ├── vendor/
 │   └── autoload.php            Generated autoloader. Committed to the repository.
 ├── src/
+│   ├── Plugin.php              Textdomain loading and top-level bootstrap helpers.
 │   ├── Acf/
 │   │   └── cta-fields.php      Helper functions for CTA and CTA Group ACF fields.
 │   ├── Blocks/
@@ -95,8 +97,16 @@ perimetre-core/
 │   │   ├── AcfBlock.php        Abstract base class for ACF blocks.
 │   │   ├── NativeBlock.php     Abstract base class for custom native blocks.
 │   │   └── Shared/             Shared blocks used across projects. Empty initially.
-│   └── GraphQL/
-│       └── Registry.php        GraphQL registration utilities. Enforces naming conventions.
+│   ├── GraphQL/
+│   │   └── Registry.php        GraphQL registration utilities. Enforces naming conventions.
+│   └── Status/
+│       ├── Settings.php        Admin settings page for the status endpoint.
+│       ├── Endpoint.php        Rewrite rule, request handling, cron scheduling.
+│       └── HealthChecks.php    DB, cache, and cron health checks.
+├── languages/
+│   ├── perimetre-core.pot      Translation template.
+│   ├── perimetre-core-fr_FR.po French translations.
+│   └── perimetre-core-fr_FR.mo Compiled French translations.
 └── README.md
 ```
 
@@ -107,10 +117,14 @@ perimetre-core/
 All Perimetre Core classes live under the `Perimetre\Core` namespace, following PSR-4:
 
 ```
+Perimetre\Core\Plugin              →  src/Plugin.php
 Perimetre\Core\Blocks\Registry     →  src/Blocks/Registry.php
 Perimetre\Core\Blocks\AcfBlock     →  src/Blocks/AcfBlock.php
 Perimetre\Core\Blocks\NativeBlock  →  src/Blocks/NativeBlock.php
 Perimetre\Core\GraphQL\Registry    →  src/GraphQL/Registry.php
+Perimetre\Core\Status\Settings     →  src/Status/Settings.php
+Perimetre\Core\Status\Endpoint     →  src/Status/Endpoint.php
+Perimetre\Core\Status\HealthChecks →  src/Status/HealthChecks.php
 ```
 
 ---
@@ -349,6 +363,51 @@ if ($ctas) : ?>
 
 ---
 
+## Status Endpoint
+
+Perimetre Core includes a configurable health-check endpoint. Configure it under **Settings → Perimetre Core**.
+
+| Setting | Default | Description |
+|---|---|---|
+| Status enabled | Off | Enables the endpoint. When off, the URL returns a 404. |
+| Status slug | `status` | The URL path (e.g. `https://example.com/status`). |
+| Secret token | Auto-generated | Required for the full health payload. |
+
+### Responses
+
+**Without token** (or wrong token) — `GET /status`:
+
+```json
+{ "status": "ok" }
+```
+
+**With valid token** — `GET /status?token=xxx`:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-02T12:00:00Z",
+  "db": "ok",
+  "cache": "ok",
+  "cron_last_run": "2026-04-02T11:00:00Z",
+  "wp_version": "6.7",
+  "php_version": "8.3.0",
+  "plugin_version": "1.3.0"
+}
+```
+
+If any check fails, `status` becomes `"error"`, a `"failing"` array lists the failing checks, and the response returns HTTP 500.
+
+### Health checks
+
+| Check | Method |
+|---|---|
+| `db` | `$wpdb->check_connection()` |
+| `cache` | `wp_using_ext_object_cache()` + set/get probe. Returns `"disabled"` when no external cache is active. |
+| `cron_last_run` | Recorded by an hourly cron event. `null` if never run. |
+
+---
+
 ## Naming Conventions
 
 | Concept | Convention | Example |
@@ -386,13 +445,18 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.2.0**
+**1.3.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.3.0
+
+- Add status / health-check endpoint with admin settings (enable toggle, slug, secret token)
+- Add i18n support with English (default) and French translations
 
 ### 1.2.0
 
