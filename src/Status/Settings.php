@@ -105,7 +105,14 @@ final class Settings
 
     public static function sanitize_enabled(mixed $value): bool
     {
-        return (bool) $value;
+        $old = (bool) get_option(self::OPTION_ENABLED, false);
+        $new = (bool) $value;
+
+        if ($new !== $old) {
+            update_option('perimetre_status_flush_rewrite', true);
+        }
+
+        return $new;
     }
 
     public static function render_enabled_field(): void
@@ -126,6 +133,11 @@ final class Settings
             esc_attr(self::OPTION_SLUG),
             esc_attr($slug)
         );
+        echo '<p class="description">' . sprintf(
+            /* translators: %s: example endpoint URL */
+            esc_html__('The endpoint will be available at %s', 'perimetre-core'),
+            '<code>' . esc_html(home_url($slug . '/')) . '</code>'
+        ) . '</p>';
     }
 
     public static function render_token_field(): void
@@ -136,7 +148,7 @@ final class Settings
             esc_attr(self::OPTION_TOKEN),
             esc_attr($token)
         );
-        echo '<p class="description">' . esc_html__('Leave empty to auto-generate on save.', 'perimetre-core') . '</p>';
+        echo '<p class="description">' . esc_html__('Leave empty to auto-generate on save. Append as ?token=… to view detailed health checks.', 'perimetre-core') . '</p>';
     }
 
     public static function sanitize_slug(mixed $value): string

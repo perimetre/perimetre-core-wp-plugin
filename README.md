@@ -445,13 +445,18 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.3.0**
+**1.3.1**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.3.1
+
+- Fix rewrite rules not flushing when enabling the status endpoint for the first time
+- Add helper text to status slug and secret token settings fields
 
 ### 1.3.0
 
