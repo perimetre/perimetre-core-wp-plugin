@@ -29,6 +29,7 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 - Provides GraphQL registration utilities that enforce naming conventions
 - Hosts shared blocks that are used across multiple projects (grows over time)
 - Provides a configurable status / health-check endpoint (DB, object cache, cron)
+- Provides configurable outgoing webhooks on post status changes (publish, draft, trash, delete)
 
 What it does **not** do:
 
@@ -99,10 +100,13 @@ perimetre-core/
 │   │   └── Shared/             Shared blocks used across projects. Empty initially.
 │   ├── GraphQL/
 │   │   └── Registry.php        GraphQL registration utilities. Enforces naming conventions.
-│   └── Status/
-│       ├── Settings.php        Admin settings page for the status endpoint.
-│       ├── Endpoint.php        Rewrite rule, request handling, cron scheduling.
-│       └── HealthChecks.php    DB, cache, and cron health checks.
+│   ├── Status/
+│   │   ├── Settings.php        Admin settings page for the status endpoint.
+│   │   ├── Endpoint.php        Rewrite rule, request handling, cron scheduling.
+│   │   └── HealthChecks.php    DB, cache, and cron health checks.
+│   └── Webhook/
+│       ├── Settings.php        ACF options page for webhook configuration.
+│       └── Dispatcher.php      Post status hooks and outgoing HTTP dispatch.
 ├── languages/
 │   ├── perimetre-core.pot      Translation template.
 │   ├── perimetre-core-fr_FR.po French translations.
@@ -125,6 +129,8 @@ Perimetre\Core\GraphQL\Registry    →  src/GraphQL/Registry.php
 Perimetre\Core\Status\Settings     →  src/Status/Settings.php
 Perimetre\Core\Status\Endpoint     →  src/Status/Endpoint.php
 Perimetre\Core\Status\HealthChecks →  src/Status/HealthChecks.php
+Perimetre\Core\Webhook\Settings    →  src/Webhook/Settings.php
+Perimetre\Core\Webhook\Dispatcher  →  src/Webhook/Dispatcher.php
 ```
 
 ---
@@ -408,6 +414,52 @@ If any check fails, `status` becomes `"error"`, a `"failing"` array lists the fa
 
 ---
 
+## Webhooks
+
+Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings > Perimetre Webhooks** (requires ACF Pro).
+
+### Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| Enable Webhooks | Off | Master toggle. When off, no requests are sent. |
+| Webhook URL | — | The endpoint that receives the POST request. |
+| Secret Token | — | Sent as a `Bearer` token in the `Authorization` header. |
+| Watched Post Types | All public types | Which post types trigger webhooks. Leave empty to watch all. |
+| Watched Events | Publish, Trash, Delete | Which status changes trigger webhooks. |
+| Request Timeout (s) | 5 | HTTP timeout (1–30 seconds). Requests are non-blocking. |
+
+### Events
+
+| Event | Trigger |
+|---|---|
+| `post.published` | Post transitions into `publish` from another status |
+| `post.updated` | Already-published post is saved again |
+| `post.drafted` | Post transitions to `draft` or `pending` |
+| `post.privatized` | Post transitions to `private` |
+| `post.scheduled` | Post transitions to `future` |
+| `post.trashed` | Post transitions to `trash` |
+| `post.deleted` | Post is permanently deleted |
+
+### Payload
+
+```json
+{
+  "event": "post.published",
+  "post_id": 42,
+  "post_type": "page",
+  "post_slug": "about-us",
+  "post_title": "About Us",
+  "timestamp": 1713000000,
+  "old_status": "draft",
+  "new_status": "publish"
+}
+```
+
+`old_status` and `new_status` are included on status transitions but omitted on permanent deletes.
+
+---
+
 ## Naming Conventions
 
 | Concept | Convention | Example |
@@ -445,13 +497,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.3.1**
+**1.4.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.4.0
+
+- Add outgoing webhooks on post status changes with ACF options configuration
 
 ### 1.3.1
 

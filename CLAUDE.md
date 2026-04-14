@@ -44,6 +44,10 @@ git tag v1.2.0 && git push origin v1.2.0
 
 **`GraphQL\Registry`** — wrappers around WPGraphQL's `register_graphql_field()` and `register_graphql_object_type()` that enforce naming conventions at registration time (camelCase fields, PascalCase types). Violations trigger `_doing_it_wrong()` and block registration.
 
+**`Webhook\Settings`** — registers an ACF options sub-page (Settings > Perimetre Webhooks) with fields for enable toggle, URL, secret token, watched post types, watched events, and request timeout. Provides cached static accessors for all settings.
+
+**`Webhook\Dispatcher`** — hooks `transition_post_status` and `before_delete_post`. Maps WordPress statuses to event keys, filters by watched post types/events, and fires non-blocking `wp_remote_post` calls with Bearer auth and a JSON payload.
+
 ## Coding Standards
 
 - **PSR-12** style, **PSR-4** autoloading under `Perimetre\Core\` namespace

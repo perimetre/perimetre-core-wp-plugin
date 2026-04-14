@@ -11,4 +11,10 @@ return array(
     'Perimetre\\Core\\Blocks\\NativeBlock' => $baseDir . '/src/Blocks/NativeBlock.php',
     'Perimetre\\Core\\Blocks\\Registry' => $baseDir . '/src/Blocks/Registry.php',
     'Perimetre\\Core\\GraphQL\\Registry' => $baseDir . '/src/GraphQL/Registry.php',
+    'Perimetre\\Core\\Plugin' => $baseDir . '/src/Plugin.php',
+    'Perimetre\\Core\\Status\\Endpoint' => $baseDir . '/src/Status/Endpoint.php',
+    'Perimetre\\Core\\Status\\HealthChecks' => $baseDir . '/src/Status/HealthChecks.php',
+    'Perimetre\\Core\\Status\\Settings' => $baseDir . '/src/Status/Settings.php',
+    'Perimetre\\Core\\Webhook\\Dispatcher' => $baseDir . '/src/Webhook/Dispatcher.php',
+    'Perimetre\\Core\\Webhook\\Settings' => $baseDir . '/src/Webhook/Settings.php',
 );

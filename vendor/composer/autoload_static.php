@@ -30,6 +30,12 @@ class ComposerStaticInitb113275a202d8e3b5c32f974a7436223
         'Perimetre\\Core\\Blocks\\NativeBlock' => __DIR__ . '/../..' . '/src/Blocks/NativeBlock.php',
         'Perimetre\\Core\\Blocks\\Registry' => __DIR__ . '/../..' . '/src/Blocks/Registry.php',
         'Perimetre\\Core\\GraphQL\\Registry' => __DIR__ . '/../..' . '/src/GraphQL/Registry.php',
+        'Perimetre\\Core\\Plugin' => __DIR__ . '/../..' . '/src/Plugin.php',
+        'Perimetre\\Core\\Status\\Endpoint' => __DIR__ . '/../..' . '/src/Status/Endpoint.php',
+        'Perimetre\\Core\\Status\\HealthChecks' => __DIR__ . '/../..' . '/src/Status/HealthChecks.php',
+        'Perimetre\\Core\\Status\\Settings' => __DIR__ . '/../..' . '/src/Status/Settings.php',
+        'Perimetre\\Core\\Webhook\\Dispatcher' => __DIR__ . '/../..' . '/src/Webhook/Dispatcher.php',
+        'Perimetre\\Core\\Webhook\\Settings' => __DIR__ . '/../..' . '/src/Webhook/Settings.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
