@@ -61,68 +61,90 @@ final class Settings
             ],
             'fields' => [
                 [
-                    'key'     => 'field_perimetre_webhook_info',
-                    'name'    => '',
-                    'label'   => '',
-                    'type'    => 'message',
-                    'message' => self::get_info_message(),
-                ],
-                [
                     'key'           => 'field_perimetre_webhook_enabled',
                     'name'          => 'perimetre_webhook_enabled',
                     'label'         => __('Enable Webhooks', 'perimetre-core'),
                     'type'          => 'true_false',
                     'ui'            => 1,
                     'default_value' => 0,
+                    'instructions'  => __(
+                        'Fires a JSON POST request to the configured URL whenever a watched post type changes status.',
+                        'perimetre-core'
+                    ),
                 ],
                 [
-                    'key'   => 'field_perimetre_webhook_url',
-                    'name'  => 'perimetre_webhook_url',
-                    'label' => __('Webhook URL', 'perimetre-core'),
-                    'type'  => 'url',
+                    'key'               => 'field_perimetre_webhook_url',
+                    'name'              => 'perimetre_webhook_url',
+                    'label'             => __('Webhook URL', 'perimetre-core'),
+                    'type'              => 'url',
+                    'conditional_logic' => [
+                        [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
+                    ],
                 ],
                 [
-                    'key'          => 'field_perimetre_webhook_secret',
-                    'name'         => 'perimetre_webhook_secret',
-                    'label'        => __('Secret Token', 'perimetre-core'),
-                    'type'         => 'text',
-                    'instructions' => __(
+                    'key'               => 'field_perimetre_webhook_secret',
+                    'name'              => 'perimetre_webhook_secret',
+                    'label'             => __('Secret Token', 'perimetre-core'),
+                    'type'              => 'text',
+                    'instructions'      => __(
                         'Sent as a Bearer token in the Authorization header. Treat this value as sensitive.',
                         'perimetre-core'
                     ),
+                    'conditional_logic' => [
+                        [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
+                    ],
                 ],
                 [
-                    'key'     => 'field_perimetre_webhook_post_types',
-                    'name'    => 'perimetre_webhook_post_types',
-                    'label'   => __('Watched Post Types', 'perimetre-core'),
-                    'type'    => 'checkbox',
-                    'choices' => [],
-                    'instructions' => __(
+                    'key'               => 'field_perimetre_webhook_post_types',
+                    'name'              => 'perimetre_webhook_post_types',
+                    'label'             => __('Watched Post Types', 'perimetre-core'),
+                    'type'              => 'checkbox',
+                    'choices'           => [],
+                    'instructions'      => __(
                         'Leave all unchecked to watch every public post type.',
                         'perimetre-core'
                     ),
+                    'conditional_logic' => [
+                        [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
+                    ],
                 ],
                 [
-                    'key'           => 'field_perimetre_webhook_events',
-                    'name'          => 'perimetre_webhook_events',
-                    'label'         => __('Watched Events', 'perimetre-core'),
-                    'type'          => 'checkbox',
-                    'choices'       => [
+                    'key'               => 'field_perimetre_webhook_events',
+                    'name'              => 'perimetre_webhook_events',
+                    'label'             => __('Watched Events', 'perimetre-core'),
+                    'type'              => 'checkbox',
+                    'choices'           => [
                         'publish' => __('Publish / Update', 'perimetre-core'),
                         'draft'   => __('Draft', 'perimetre-core'),
                         'trash'   => __('Trash', 'perimetre-core'),
                         'delete'  => __('Permanent Delete', 'perimetre-core'),
                     ],
-                    'default_value' => ['publish', 'trash', 'delete'],
+                    'default_value'     => ['publish', 'trash', 'delete'],
+                    'conditional_logic' => [
+                        [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
+                    ],
                 ],
                 [
-                    'key'           => 'field_perimetre_webhook_timeout',
-                    'name'          => 'perimetre_webhook_timeout',
-                    'label'         => __('Request Timeout (s)', 'perimetre-core'),
-                    'type'          => 'number',
-                    'min'           => 1,
-                    'max'           => 30,
-                    'default_value' => 5,
+                    'key'               => 'field_perimetre_webhook_timeout',
+                    'name'              => 'perimetre_webhook_timeout',
+                    'label'             => __('Request Timeout (s)', 'perimetre-core'),
+                    'type'              => 'number',
+                    'min'               => 1,
+                    'max'               => 30,
+                    'default_value'     => 5,
+                    'conditional_logic' => [
+                        [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
+                    ],
+                ],
+                [
+                    'key'               => 'field_perimetre_webhook_info',
+                    'name'              => '',
+                    'label'             => '',
+                    'type'              => 'message',
+                    'message'           => self::get_info_message(),
+                    'conditional_logic' => [
+                        [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
+                    ],
                 ],
             ],
         ]);
@@ -136,6 +158,9 @@ final class Settings
             'post_type'  => 'page',
             'post_slug'  => 'about-us',
             'post_title' => 'About Us',
+            'permalink'  => '/about-us/',
+            'language'   => 'en',
+            'taxonomies' => (object) [],
             'timestamp'  => 1713000000,
             'old_status' => 'draft',
             'new_status' => 'publish',
@@ -155,7 +180,8 @@ final class Settings
             . '</pre>'
             . '<p><em>'
             . esc_html__(
-                'old_status and new_status are included on status transitions but omitted on permanent deletes.',
+                'old_status and new_status are included on status transitions but omitted on permanent deletes. '
+                . 'language is included when WPML is active, null otherwise.',
                 'perimetre-core'
             )
             . '</em></p>';

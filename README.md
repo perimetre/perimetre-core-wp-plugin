@@ -450,13 +450,22 @@ Perimetre Core can fire outgoing HTTP POST requests when posts change status. Co
   "post_type": "page",
   "post_slug": "about-us",
   "post_title": "About Us",
+  "permalink": "/about-us/",
+  "language": "en",
+  "taxonomies": {
+    "category": ["news"],
+    "post_tag": ["launch"]
+  },
   "timestamp": 1713000000,
   "old_status": "draft",
   "new_status": "publish"
 }
 ```
 
-`old_status` and `new_status` are included on status transitions but omitted on permanent deletes.
+- `permalink` — relative URL path, useful for on-demand revalidation (e.g. Next.js `revalidatePath`)
+- `language` — WPML language code when WPML is active, `null` otherwise
+- `taxonomies` — public taxonomy terms keyed by taxonomy slug, so the frontend can revalidate archive pages
+- `old_status` / `new_status` — included on status transitions, omitted on permanent deletes
 
 ---
 
@@ -497,13 +506,20 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.4.0**
+**1.4.1**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.4.1
+
+- Add permalink, language (WPML), and taxonomies to webhook payload
+- Hide webhook settings fields when disabled via ACF conditional logic
+- Move payload example to bottom of settings page
+- Fix trashed post permalinks including `__trashed` suffix in payload
 
 ### 1.4.0
 

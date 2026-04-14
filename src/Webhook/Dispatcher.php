@@ -130,6 +130,9 @@ final class Dispatcher
             'post_type'  => $post->post_type,
             'post_slug'  => $post->post_name,
             'post_title' => $post->post_title,
+            'permalink'  => self::get_relative_permalink($post),
+            'language'   => self::get_language($post->ID),
+            'taxonomies' => self::get_taxonomies($post),
             'timestamp'  => time(),
         ];
 
@@ -139,6 +142,78 @@ final class Dispatcher
         }
 
         return $payload;
+    }
+
+    private static function get_relative_permalink(WP_Post $post): string
+    {
+        // WordPress appends __trashed to slugs — temporarily restore for a clean permalink.
+        $original_status = $post->post_status;
+        $original_name = $post->post_name;
+        if ($original_status === 'trash') {
+            $post->post_status = 'publish';
+            $post->post_name = preg_replace('/__trashed$/', '', $post->post_name);
+        }
+
+        $permalink = get_permalink($post);
+
+        $post->post_status = $original_status;
+        $post->post_name = $original_name;
+
+        if (! is_string($permalink)) {
+            return '';
+        }
+
+        return (string) wp_parse_url($permalink, PHP_URL_PATH) ?: '/';
+    }
+
+    /**
+     * Returns the WPML language code for a post, or null when WPML is inactive.
+     */
+    private static function get_language(int $post_id): ?string
+    {
+        if (! has_filter('wpml_post_language_details')) {
+            return null;
+        }
+
+        /** @var array{language_code?: string}|false $details */
+        $details = apply_filters('wpml_post_language_details', null, $post_id);
+
+        return is_array($details) && isset($details['language_code'])
+            ? $details['language_code']
+            : null;
+    }
+
+    /**
+     * Returns public taxonomy terms keyed by taxonomy slug.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function get_taxonomies(WP_Post $post): array
+    {
+        $taxonomies = get_object_taxonomies($post->post_type, 'objects');
+        $result = [];
+
+        foreach ($taxonomies as $taxonomy) {
+            if (! $taxonomy->public) {
+                continue;
+            }
+
+            $terms = get_the_terms($post, $taxonomy->name);
+            if (! is_array($terms)) {
+                continue;
+            }
+
+            $slugs = [];
+            foreach ($terms as $term) {
+                $slugs[] = $term->slug;
+            }
+
+            if ($slugs !== []) {
+                $result[$taxonomy->name] = $slugs;
+            }
+        }
+
+        return $result;
     }
 
     /**
