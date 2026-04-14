@@ -172,6 +172,7 @@ abstract class AcfBlock
             'description'     => $this->get_description(),
             'category'        => $this->get_category(),
             'icon'            => $this->get_icon(),
+            'mode'            => 'edit',
             'supports'        => $this->get_supports(),
             'render_callback' => [$this, 'render'],
             'show_in_graphql' => true,

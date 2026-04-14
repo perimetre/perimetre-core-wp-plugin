@@ -531,13 +531,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.5.0**
+**1.5.1**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.5.1
+
+- Default ACF blocks to edit mode instead of preview mode
 
 ### 1.5.0
 
