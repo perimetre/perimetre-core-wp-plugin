@@ -68,7 +68,8 @@ final class Settings
                     'ui'            => 1,
                     'default_value' => 0,
                     'instructions'  => __(
-                        'Fires a JSON POST request to the configured URL whenever a watched post type changes status.',
+                        'Fires a JSON POST request to the configured URL on watched events '
+                        . '(post changes, options saves, menu updates).',
                         'perimetre-core'
                     ),
                 ],
@@ -118,6 +119,8 @@ final class Settings
                         'draft'   => __('Draft', 'perimetre-core'),
                         'trash'   => __('Trash', 'perimetre-core'),
                         'delete'  => __('Permanent Delete', 'perimetre-core'),
+                        'options' => __('ACF Options Saved', 'perimetre-core'),
+                        'menu'    => __('Menu Saved or Deleted', 'perimetre-core'),
                     ],
                     'default_value'     => ['publish', 'trash', 'delete'],
                     'conditional_logic' => [
@@ -166,21 +169,45 @@ final class Settings
             'new_status' => 'publish',
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
+        $options_payload = wp_json_encode([
+            'event'        => 'options.saved',
+            'options_page' => 'acf-options-seo',
+            'timestamp'    => 1713000000,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+        $menu_payload = wp_json_encode([
+            'event'     => 'menu.saved',
+            'menu_id'   => 3,
+            'menu_name' => 'Main Navigation',
+            'menu_slug' => 'main-navigation',
+            'timestamp' => 1713000000,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+        $pre = 'background:#f0f0f0;padding:10px;max-width:480px;overflow:auto';
+
         return
             '<p>'
             . esc_html__(
-                'Fires a JSON POST request to the configured URL whenever a watched post type changes status. '
+                'Fires a JSON POST request to the configured URL on watched events. '
                 . 'The request includes an Authorization: Bearer header with the secret token.',
                 'perimetre-core'
             )
             . '</p>'
-            . '<p><strong>' . esc_html__('Example payload:', 'perimetre-core') . '</strong></p>'
-            . '<pre style="background:#f0f0f0;padding:10px;max-width:480px;overflow:auto">'
+            . '<p><strong>' . esc_html__('Post event payload:', 'perimetre-core') . '</strong></p>'
+            . '<pre style="' . esc_attr($pre) . '">'
             . esc_html((string) $payload)
+            . '</pre>'
+            . '<p><strong>' . esc_html__('Options event payload:', 'perimetre-core') . '</strong></p>'
+            . '<pre style="' . esc_attr($pre) . '">'
+            . esc_html((string) $options_payload)
+            . '</pre>'
+            . '<p><strong>' . esc_html__('Menu event payload:', 'perimetre-core') . '</strong></p>'
+            . '<pre style="' . esc_attr($pre) . '">'
+            . esc_html((string) $menu_payload)
             . '</pre>'
             . '<p><em>'
             . esc_html__(
-                'old_status and new_status are included on status transitions but omitted on permanent deletes. '
+                'Post payloads: old_status/new_status included on transitions, omitted on deletes. '
                 . 'language is included when WPML is active, null otherwise.',
                 'perimetre-core'
             )

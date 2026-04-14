@@ -11,6 +11,9 @@ use WP_Post;
  */
 final class Dispatcher
 {
+    /** @var array<int, \WP_Term> */
+    private static array $menu_cache = [];
+
     /** @var array<string, string> */
     private const STATUS_MAP = [
         'publish' => 'publish',
@@ -25,6 +28,10 @@ final class Dispatcher
     {
         add_action('transition_post_status', [self::class, 'on_transition'], 10, 3);
         add_action('before_delete_post', [self::class, 'on_delete'], 10, 2);
+        add_action('acf/save_post', [self::class, 'on_options_save'], 20);
+        add_action('wp_update_nav_menu', [self::class, 'on_menu_save'], 10);
+        add_action('wp_delete_nav_menu', [self::class, 'on_menu_delete'], 10);
+        add_filter('pre_delete_term', [self::class, 'cache_menu_before_delete'], 10, 2);
     }
 
     public static function on_transition(string $new_status, string $old_status, WP_Post $post): void
@@ -84,6 +91,94 @@ final class Dispatcher
 
         $payload = self::build_payload('post.deleted', $post);
         self::dispatch($payload);
+    }
+
+    /**
+     * @param int|string $post_id
+     */
+    public static function on_options_save(mixed $post_id): void
+    {
+        if ($post_id !== 'options') {
+            return;
+        }
+
+        if (! Settings::can_dispatch()) {
+            return;
+        }
+
+        if (! in_array('options', Settings::get_events(), true)) {
+            return;
+        }
+
+        if (! function_exists('acf_get_current_screen')) {
+            return;
+        }
+
+        $screen = acf_get_current_screen();
+        $page_slug = $screen['id'] ?? null;
+        if (! is_string($page_slug) || $page_slug === '') {
+            return;
+        }
+
+        // Avoid feedback loop when saving the webhook settings themselves.
+        if ($page_slug === Settings::PAGE_SLUG) {
+            return;
+        }
+
+        self::dispatch([
+            'event'        => 'options.saved',
+            'options_page' => $page_slug,
+            'timestamp'    => time(),
+        ]);
+    }
+
+    /**
+     * Cache menu data before WordPress deletes the term.
+     *
+     * @return mixed Passthrough value for the filter.
+     */
+    public static function cache_menu_before_delete(mixed $passthrough, int $term_id): mixed
+    {
+        $menu = wp_get_nav_menu_object($term_id);
+        if ($menu) {
+            self::$menu_cache[$term_id] = $menu;
+        }
+
+        return $passthrough;
+    }
+
+    public static function on_menu_save(int $menu_id): void
+    {
+        self::handle_menu_event('menu.saved', $menu_id);
+    }
+
+    public static function on_menu_delete(int $menu_id): void
+    {
+        self::handle_menu_event('menu.deleted', $menu_id);
+    }
+
+    private static function handle_menu_event(string $event, int $menu_id): void
+    {
+        if (! Settings::can_dispatch()) {
+            return;
+        }
+
+        if (! in_array('menu', Settings::get_events(), true)) {
+            return;
+        }
+
+        $menu = wp_get_nav_menu_object($menu_id) ?: (self::$menu_cache[$menu_id] ?? null);
+        if (! $menu) {
+            return;
+        }
+
+        self::dispatch([
+            'event'     => $event,
+            'menu_id'   => $menu_id,
+            'menu_name' => $menu->name,
+            'menu_slug' => $menu->slug,
+            'timestamp' => time(),
+        ]);
     }
 
     private static function resolve_event_label(string $new_status, string $old_status): string

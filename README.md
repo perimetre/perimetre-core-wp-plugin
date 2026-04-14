@@ -426,7 +426,7 @@ Perimetre Core can fire outgoing HTTP POST requests when posts change status. Co
 | Webhook URL | — | The endpoint that receives the POST request. |
 | Secret Token | — | Sent as a `Bearer` token in the `Authorization` header. |
 | Watched Post Types | All public types | Which post types trigger webhooks. Leave empty to watch all. |
-| Watched Events | Publish, Trash, Delete | Which status changes trigger webhooks. |
+| Watched Events | Publish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates). |
 | Request Timeout (s) | 5 | HTTP timeout (1–30 seconds). Requests are non-blocking. |
 
 ### Events
@@ -440,8 +440,11 @@ Perimetre Core can fire outgoing HTTP POST requests when posts change status. Co
 | `post.scheduled` | Post transitions to `future` |
 | `post.trashed` | Post transitions to `trash` |
 | `post.deleted` | Post is permanently deleted |
+| `options.saved` | ACF options page is saved (excludes the webhook settings page itself) |
+| `menu.saved` | Navigation menu is created or updated |
+| `menu.deleted` | Navigation menu is deleted |
 
-### Payload
+### Post Payload
 
 ```json
 {
@@ -466,6 +469,28 @@ Perimetre Core can fire outgoing HTTP POST requests when posts change status. Co
 - `language` — WPML language code when WPML is active, `null` otherwise
 - `taxonomies` — public taxonomy terms keyed by taxonomy slug, so the frontend can revalidate archive pages
 - `old_status` / `new_status` — included on status transitions, omitted on permanent deletes
+
+### Options Payload
+
+```json
+{
+  "event": "options.saved",
+  "options_page": "acf-options-seo",
+  "timestamp": 1713000000
+}
+```
+
+### Menu Payload
+
+```json
+{
+  "event": "menu.saved",
+  "menu_id": 3,
+  "menu_name": "Main Navigation",
+  "menu_slug": "main-navigation",
+  "timestamp": 1713000000
+}
+```
 
 ---
 
@@ -506,13 +531,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.4.1**
+**1.5.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.5.0
+
+- Add options and menu webhook events
 
 ### 1.4.1
 
