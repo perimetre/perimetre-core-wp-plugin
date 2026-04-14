@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "composer lint 2>&1 | tail -20"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '(composer\\.lock|vendor/)'; then echo 'BLOCK: Use composer commands instead of editing vendor/ or lock files directly'; fi"
+      }
+    ]
+  }
+}
