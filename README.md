@@ -195,7 +195,7 @@ class HeroBlock extends AcfBlock
             'show_in_graphql'    => 1,
             'graphql_field_name' => $this->get_graphql_field_name(),
             'location'           => [[
-                ['param' => 'block', 'operator' => '==', 'value' => $this->get_name()],
+                ['param' => 'block', 'operator' => '==', 'value' => $this->get_acf_name()],
             ]],
             'fields' => [
                 [
@@ -531,13 +531,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.5.1**
+**1.6.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.6.0
+
+- Add `AcfBlock::get_acf_name()` for use in ACF field-group block location rules
 
 ### 1.5.1
 

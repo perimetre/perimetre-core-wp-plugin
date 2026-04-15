@@ -48,7 +48,7 @@ namespace Perimetre\Core\Blocks;
  *               'show_in_graphql' => 1,
  *               'graphql_field_name' => $this->get_graphql_field_name(),
  *               'location'       => [[
- *                   ['param' => 'block', 'operator' => '==', 'value' => $this->get_name()],
+ *                   ['param' => 'block', 'operator' => '==', 'value' => $this->get_acf_name()],
  *               ]],
  *               'fields'         => [
  *                   [
@@ -69,10 +69,46 @@ namespace Perimetre\Core\Blocks;
 abstract class AcfBlock
 {
     /**
-     * The block name in namespace/block-name format.
-     * Must match the plugin namespace: perimetre/block-name or project-slug/block-name.
+     * The block name in `namespace/block-name` format — the pre-transform,
+     * human-facing identifier.
+     *
+     * Must follow `perimetre/block-name` or `project-slug/block-name`.
+     * This is the value passed to `acf_register_block_type()`, which
+     * transforms it (lowercases, runs `acf_slugify()`, prepends `acf/`)
+     * before storing. For the post-transform form — required by ACF
+     * `block` location rules and anywhere WordPress looks up the block
+     * by its registered name — use `get_acf_name()`.
      */
     abstract protected function get_name(): string;
+
+    /**
+     * The block name as ACF stores it internally after registration.
+     *
+     * `acf_register_block_type()` rewrites the block name before storing it:
+     * it lowercases the name, runs `acf_slugify()` (which replaces `/`, `_`,
+     * `-`, and spaces with a single `-`), and prepends `acf/`. So a block
+     * whose `get_name()` returns `'project-slug/hero'` is stored under
+     * `'acf/project-slug-hero'`.
+     *
+     * Use this method wherever WordPress or ACF needs the post-transform
+     * form — most commonly the `value` of an ACF field-group `block`
+     * location rule, so the field group binds to the registered block:
+     *
+     *     acf_add_local_field_group([
+     *         'location' => [[
+     *             ['param' => 'block', 'operator' => '==', 'value' => $this->get_acf_name()],
+     *         ]],
+     *         // ...
+     *     ]);
+     *
+     * Do NOT use this for `acf_register_block_type(['name' => ...])` —
+     * ACF does the transform itself and expects the pre-transform form
+     * there. Use `get_name()` for that.
+     */
+    protected function get_acf_name(): string
+    {
+        return 'acf/' . acf_slugify($this->get_name());
+    }
 
     /**
      * The human-readable block title shown in the block inserter.
