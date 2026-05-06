@@ -36,6 +36,16 @@ function perimetre_cta_fields(
             'choices'       => $variants,
             'default_value' => array_key_first($variants),
         ],
+        [
+            'key'             => "field_{$prefix}_icon",
+            'name'            => "{$prefix}_icon",
+            'label'           => 'Icon',
+            'type'            => 'image',
+            'return_format'   => 'id',
+            'mime_types'      => 'svg,png',
+            'required'        => 0,
+            'show_in_graphql' => 1,
+        ],
     ];
 }
 
