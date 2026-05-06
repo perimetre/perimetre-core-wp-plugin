@@ -295,7 +295,7 @@ Perimetre Core provides two helper functions for registering CTA (Call-to-Action
 
 ### `perimetre_cta_fields`
 
-Returns ACF sub-fields for a single CTA: a link field and a variant select.
+Returns ACF sub-fields for a single CTA: a link field, a variant select, and an optional icon (SVG or PNG).
 
 ```php
 perimetre_cta_fields(
@@ -304,9 +304,11 @@ perimetre_cta_fields(
 ): array
 ```
 
+The icon sub-field is registered as an ACF `image` field with `return_format: id` and `mime_types: svg,png`. It is optional (`required: 0`) and exposed through WPGraphQL.
+
 ### `perimetre_cta_group_fields`
 
-Returns a tab + repeater of CTAs, ready to spread into a field group's `fields` array.
+Returns a tab + repeater of CTAs (each with link, variant, and optional icon), ready to spread into a field group's `fields` array.
 
 ```php
 perimetre_cta_group_fields(
@@ -531,13 +533,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.6.0**
+**1.7.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.7.0
+
+- Add optional icon sub-field on CTA helpers (`perimetre_cta_fields`, `perimetre_cta_group_fields`) — accepts SVG or PNG, returns the attachment ID, exposed through WPGraphQL
 
 ### 1.6.0
 
