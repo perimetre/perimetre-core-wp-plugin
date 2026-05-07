@@ -145,6 +145,39 @@ abstract class AcfBlock
     }
 
     /**
+     * The ACF block render mode. One of:
+     *
+     *   - 'edit'    — always show ACF fields in the canvas; the render
+     *                 output (and any `<InnerBlocks />` token in it) is
+     *                 hidden.
+     *   - 'preview' — always show the render output in the canvas; the
+     *                 ACF fields are only reachable from the Block
+     *                 sidebar.
+     *   - 'auto'    — show fields in the canvas when the block is
+     *                 selected, render output (with InnerBlocks slot)
+     *                 when it isn't.
+     *
+     * The default adapts to whether InnerBlocks are configured:
+     *
+     *   - With InnerBlocks: 'auto'. Authors get the in-canvas field UX
+     *     they expect from a fields-only ACF block when the block is
+     *     selected, and the render template (with the visible InnerBlocks
+     *     slot) appears when they click into a child block. Both surfaces
+     *     stay reachable; the field group is also still rendered in the
+     *     right-hand Block sidebar at all times.
+     *   - Without InnerBlocks: 'edit'. Same behavior as before this hook
+     *     was introduced — fields-only blocks render the field UI in the
+     *     canvas and have nothing else to show.
+     *
+     * Override to force a specific mode, e.g. 'preview' when the render
+     * template alone tells the whole story.
+     */
+    protected function get_mode(): string
+    {
+        return $this->get_inner_blocks_template() !== null ? 'auto' : 'edit';
+    }
+
+    /**
      * Additional block supports configuration.
      *
      * Note: when get_inner_blocks_template() returns non-null, `'jsx' => true`
@@ -322,7 +355,7 @@ abstract class AcfBlock
             'description'     => $this->get_description(),
             'category'        => $this->get_category(),
             'icon'            => $this->get_icon(),
-            'mode'            => 'edit',
+            'mode'            => $this->get_mode(),
             'supports'        => $this->get_supports(),
             'render_callback' => [$this, 'render'],
             'show_in_graphql' => true,
