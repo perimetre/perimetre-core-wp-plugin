@@ -35,6 +35,11 @@ namespace Perimetre\Core\Blocks;
  *           return __('Full-width hero section with heading, subheading, and CTA.', 'perimetre-core');
  *       }
  *
+ *       protected function get_category(): string
+ *       {
+ *           return 'perimetre';
+ *       }
+ *
  *       protected function register_fields(): void
  *       {
  *           acf_add_local_field_group([
