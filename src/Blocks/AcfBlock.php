@@ -43,21 +43,14 @@ namespace Perimetre\Core\Blocks;
  *       protected function register_fields(): void
  *       {
  *           acf_add_local_field_group([
- *               'key'            => 'group_perimetre_hero',
- *               'title'          => 'Hero',
- *               'show_in_graphql' => 1,
+ *               'key'                => 'group_perimetre_hero',
+ *               'title'              => 'Hero',
+ *               'show_in_graphql'    => 1,
  *               'graphql_field_name' => $this->get_graphql_field_name(),
- *               'location'       => [[
+ *               'location'           => [[
  *                   ['param' => 'block', 'operator' => '==', 'value' => $this->get_acf_name()],
  *               ]],
- *               'fields'         => [
- *                   [
- *                       'key'   => 'field_perimetre_hero_heading',
- *                       'label' => 'Heading',
- *                       'name'  => 'heading',
- *                       'type'  => 'text',
- *                   ],
- *               ],
+ *               'fields' => [ ... ],
  *           ]);
  *       }
  *   }
@@ -65,6 +58,11 @@ namespace Perimetre\Core\Blocks;
  * Then register it:
  *
  *   Registry::register_block(HeroBlock::class);
+ *
+ * To enable nested children (InnerBlocks), additionally override
+ * get_inner_blocks_template() — see the method's docblock for details and
+ * the get_allowed_blocks() / get_template_lock() companions for restricting
+ * insertion or locking shape.
  */
 abstract class AcfBlock
 {
@@ -149,6 +147,10 @@ abstract class AcfBlock
     /**
      * Additional block supports configuration.
      *
+     * Note: when get_inner_blocks_template() returns non-null, `'jsx' => true`
+     * is automatically merged into the supports array at registration time —
+     * subclasses with InnerBlocks do not need to declare it manually.
+     *
      * @return array<string, mixed>
      */
     protected function get_supports(): array
@@ -160,21 +162,133 @@ abstract class AcfBlock
     }
 
     /**
-     * The render callback for the block editor preview.
-     * Defaults to null (ACF renders a simple placeholder).
-     * Override to provide a custom PHP render template.
+     * Inner-blocks template, in WordPress's `[name, attrs, innerBlocks]`
+     * shape. Return non-null to enable an InnerBlocks slot for this block.
+     *
+     * Returning a non-null value triggers two automatic registration
+     * adjustments so the JSX `<InnerBlocks />` token in the render
+     * template actually reaches the editor canvas:
+     *
+     *   1. `acf_block_version` is bumped to 2 — required so ACF maps
+     *      `<InnerBlocks />` to its wrapper component (which honors
+     *      `template`, `templateLock`, and `allowedBlocks` JSX
+     *      attributes). v1 maps it to a bare wp.blockEditor component
+     *      that ignores those attributes.
+     *   2. `'jsx' => true` is merged into `get_supports()` so the render
+     *      output is parsed as JSX in the editor.
+     *
+     * The shape mirrors WordPress's block-template format:
+     *
+     *     return [
+     *         ['core/columns', [], [
+     *             ['core/column', [], []],
+     *             ['core/column', [], []],
+     *         ]],
+     *     ];
+     *
+     * @see https://developer.wordpress.org/block-editor/reference-guides/block-api/block-templates/
+     *
+     * @return array<int, array<int, mixed>>|null
+     */
+    protected function get_inner_blocks_template(): ?array
+    {
+        return null;
+    }
+
+    /**
+     * Block names that may be inserted into this block's InnerBlocks slot.
+     * Null means any registered block is allowed.
+     *
+     * Block names use the post-transform form (`acf/project-slug-hero`,
+     * `core/paragraph`, etc.), since that's what the editor's inserter
+     * compares against.
+     *
+     * Only consulted when get_inner_blocks_template() is non-null.
+     *
+     * @return list<string>|null
+     */
+    protected function get_allowed_blocks(): ?array
+    {
+        return null;
+    }
+
+    /**
+     * Lock policy applied to the InnerBlocks slot. One of:
+     *
+     *   - false         — no lock (default)
+     *   - 'all'         — children can't be added, removed, or moved
+     *   - 'insert'      — children can't be added or removed (but can move)
+     *   - 'contentOnly' — only block content is editable, no structure changes
+     *
+     * Note: WordPress propagates a parent's templateLock down to nested
+     * InnerBlocks instances unless those instances (or their parent block
+     * attributes) override it. When seeding a template with nested blocks
+     * (e.g. core/columns) and you want children to remain editable, set
+     * `templateLock => false` as a block attribute in the inner template
+     * entries to break the propagation.
+     *
+     * Only consulted when get_inner_blocks_template() is non-null.
+     */
+    protected function get_template_lock(): false|string
+    {
+        return false;
+    }
+
+    /**
+     * Editor-preview render callback.
+     *
+     * Visibility is `public` (not `protected`) because ACF's
+     * `acf_render_block()` calls `is_callable($block['render_callback'])`
+     * from outside the class scope; `[$this, 'render']` reports as
+     * not-callable while the method is protected, so ACF silently skips
+     * the callback and the editor canvas stays empty (the
+     * `<InnerBlocks />` token never reaches the editor in JSX-enabled
+     * blocks). Subclasses overriding this method must keep the same
+     * visibility — PHP forbids narrowing.
+     *
+     * Default behavior:
+     *
+     *   - Without an InnerBlocks template configured: emits the legacy
+     *     placeholder div labeled with the block name and title.
+     *   - With a template configured: emits a `<InnerBlocks />` JSX tag
+     *     wrapped in a preview div, encoding `template`, `templateLock`,
+     *     and `allowedBlocks` as JSX attributes.
+     *
+     * Override to provide a richer custom preview. In a headless context
+     * this output is only consumed by the block editor — frontend
+     * rendering is handled by the headless consumer.
      *
      * @param array<string, mixed> $block
      * @param string $content
      * @param bool $is_preview
      * @param int $post_id
      */
-    protected function render(array $block, string $content, bool $is_preview, int $post_id): void
+    public function render(array $block, string $content, bool $is_preview, int $post_id): void
     {
-        // Override in child class to provide a custom editor preview.
-        // In a headless context this is only used in the block editor, not on the frontend.
-        $label = $this->get_name() . ': ' . $this->get_title();
-        echo '<div class="perimetre-block-preview">' . esc_html($label) . '</div>';
+        unset($block, $content, $is_preview, $post_id);
+
+        $template = $this->get_inner_blocks_template();
+
+        if ($template === null) {
+            $label = $this->get_name() . ': ' . $this->get_title();
+            echo '<div class="perimetre-block-preview">' . esc_html($label) . '</div>';
+            return;
+        }
+
+        $allowed_blocks = $this->get_allowed_blocks();
+        $template_lock  = $this->get_template_lock();
+
+        echo '<div class="perimetre-block-preview perimetre-block-preview--inner-blocks">';
+        echo '<InnerBlocks';
+        echo ' template="' . esc_attr((string) wp_json_encode($template)) . '"';
+        if ($allowed_blocks !== null && $allowed_blocks !== []) {
+            echo ' allowedBlocks="' . esc_attr((string) wp_json_encode($allowed_blocks)) . '"';
+        }
+        if ($template_lock !== false) {
+            echo ' templateLock="' . esc_attr($template_lock) . '"';
+        }
+        echo ' />';
+        echo '</div>';
     }
 
     /**
@@ -202,7 +316,7 @@ abstract class AcfBlock
             return;
         }
 
-        acf_register_block_type([
+        $args = [
             'name'            => $this->get_name(),
             'title'           => $this->get_title(),
             'description'     => $this->get_description(),
@@ -212,7 +326,14 @@ abstract class AcfBlock
             'supports'        => $this->get_supports(),
             'render_callback' => [$this, 'render'],
             'show_in_graphql' => true,
-        ]);
+        ];
+
+        if ($this->get_inner_blocks_template() !== null) {
+            $args['acf_block_version'] = 2;
+            $args['supports']['jsx']   = true;
+        }
+
+        acf_register_block_type($args);
 
         $this->register_fields();
     }
