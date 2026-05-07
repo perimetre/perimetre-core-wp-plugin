@@ -46,3 +46,20 @@
     outline-offset: -4px;
     border-radius: 2px;
 }
+
+/*
+ * Editor-only reminder rendered above the InnerBlocks slot when a
+ * block returns text from get_editor_notice(). In mode='preview' the
+ * ACF fields live only in the right-hand Block sidebar; this notice
+ * keeps that surface discoverable inside the canvas.
+ */
+.perimetre-block-preview__notice {
+    margin: 0 0 0.75rem;
+    padding: 0.625rem 0.875rem;
+    background: #fef3c7;
+    color: #78350f;
+    border-left: 3px solid #f59e0b;
+    border-radius: 2px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
