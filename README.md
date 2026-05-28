@@ -605,13 +605,19 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.9.0**
+**1.10.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.10.0
+
+- `AcfBlock::get_mode()` now picks a smart default: `'preview'` when `get_inner_blocks_template()` is non-null (so the `<InnerBlocks />` slot stays visible on the canvas), `'edit'` otherwise. Subclasses with InnerBlocks no longer need to override `get_mode()` manually.
+- Add `AcfBlock::get_editor_notice()` hook — return a string to render an amber reminder banner above the InnerBlocks slot, useful for `mode='preview'` blocks where ACF fields live only in the right-hand sidebar.
+- Ship an editor stylesheet (`assets/editor.css`) enqueued via `Plugin::enqueue_editor_assets()` that keeps the InnerBlocks appender always visible, outlines empty columns, and styles the editor notice.
 
 ### 1.9.0
 
