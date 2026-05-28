@@ -145,17 +145,52 @@ abstract class AcfBlock
     }
 
     /**
-     * The block edit mode. Defaults to 'edit', which always shows the
-     * fields form in the editor — appropriate for headless setups where
-     * the public frontend renders elsewhere.
+     * The ACF block render mode. One of:
      *
-     * Override to return 'preview' (live render of the block in place,
-     * with a sidebar form) or 'auto' (toggle on hover) on standard sites
-     * where `render_frontend()` produces real markup.
+     *   - 'edit'    — always show ACF fields in the canvas; the render
+     *                 output (and any `<InnerBlocks />` token in it) is
+     *                 hidden.
+     *   - 'preview' — always show the render output in the canvas; the
+     *                 ACF fields are only reachable from the Block
+     *                 sidebar.
+     *   - 'auto'    — show fields when the block is selected, render
+     *                 output when it isn't (default ACF v2 behavior for
+     *                 most blocks).
+     *
+     * The default adapts to whether InnerBlocks are configured:
+     *
+     *   - With InnerBlocks: 'preview'. The render template (which holds
+     *     the visible `<InnerBlocks />` slot) must always be on canvas
+     *     so authors can drag/drop and use the appender. Fields stay
+     *     reachable in the right-hand Block sidebar; subclasses can also
+     *     override get_editor_notice() to surface a reminder near the
+     *     slot.
+     *   - Without InnerBlocks: 'edit'. Same behavior as before this
+     *     hook existed — fields-only blocks render the field UI in the
+     *     canvas and have nothing else to show.
+     *
+     * Override to force a specific mode (e.g. 'auto' for a field-heavy
+     * InnerBlocks block where authors prefer toggling between surfaces).
      */
     protected function get_mode(): string
     {
-        return 'edit';
+        return $this->get_inner_blocks_template() !== null ? 'preview' : 'edit';
+    }
+
+    /**
+     * Optional editor-only notice rendered above the InnerBlocks slot.
+     * Useful for blocks in mode='preview' where the ACF fields live only
+     * in the right-hand sidebar — a short reminder like "don't forget to
+     * fill in the heading data in the Block panel" keeps that surface
+     * discoverable.
+     *
+     * Return null (default) to skip the notice. Plain text only; HTML
+     * is escaped before output. Only consulted when
+     * get_inner_blocks_template() is non-null.
+     */
+    protected function get_editor_notice(): ?string
+    {
+        return null;
     }
 
     /**
@@ -299,6 +334,12 @@ abstract class AcfBlock
         }
 
         echo '<div class="perimetre-block-preview perimetre-block-preview--inner-blocks">';
+
+        $notice = $this->get_editor_notice();
+        if (is_string($notice) && $notice !== '') {
+            echo '<p class="perimetre-block-preview__notice">' . esc_html($notice) . '</p>';
+        }
+
         $this->emit_inner_blocks_token($template);
         echo '</div>';
     }

@@ -75,6 +75,15 @@ WebhookSettings::register();
 WebhookDispatcher::register();
 
 /**
+ * Enqueue the block-editor stylesheet that styles the InnerBlocks
+ * preview wrappers AcfBlock::render() emits.
+ *
+ * Named with a non-anonymous callback per the no-anonymous-functions-on-
+ * hooks coding standard.
+ */
+add_action('enqueue_block_editor_assets', [Plugin::class, 'enqueue_editor_assets']);
+
+/**
  * Schedule cron and flush rewrite rules on activation.
  */
 register_activation_hook(__FILE__, [StatusEndpoint::class, 'activate']);

@@ -1,0 +1,65 @@
+/*
+ * Perimetre Core — block editor styles.
+ *
+ * Loaded via enqueue_block_editor_assets in perimetre-core.php. Scoped
+ * to the .perimetre-block-preview wrapper that AcfBlock::render() emits,
+ * so these rules only affect ACF blocks that opt into Perimetre's
+ * InnerBlocks support — never native Gutenberg blocks elsewhere on the
+ * page.
+ */
+
+/*
+ * Force the empty-column appender ("+") to stay visible inside any
+ * Perimetre InnerBlocks slot. Default Gutenberg only renders the
+ * appender when the column itself is focused, which makes empty
+ * columns look locked to authors who haven't clicked into them yet.
+ *
+ * Targets both the columns block's own appender (for scenarios where a
+ * project's template adds new column siblings) and each individual
+ * core/column appender. Visibility plus explicit display because some
+ * Gutenberg builds toggle visibility, not display.
+ */
+.perimetre-block-preview--inner-blocks .block-list-appender,
+.perimetre-block-preview--inner-blocks .wp-block-column .block-list-appender,
+.perimetre-block-preview--inner-blocks .wp-block-columns > .block-list-appender {
+    display: block;
+    visibility: visible;
+    opacity: 1;
+}
+
+.perimetre-block-preview--inner-blocks .block-editor-button-block-appender,
+.perimetre-block-preview--inner-blocks .block-editor-default-block-appender {
+    display: flex;
+    opacity: 1;
+}
+
+/*
+ * Empty-column outline. With the appender always visible, an empty
+ * column is just a "+" floating in whitespace — easy to miss alongside
+ * the populated column. A dashed outline frames the slot so authors
+ * can see the two-column shape even before adding content.
+ */
+.perimetre-block-preview--inner-blocks .wp-block-column:empty,
+.perimetre-block-preview--inner-blocks .wp-block-column:not(:has(.wp-block)) {
+    min-height: 80px;
+    outline: 1px dashed rgba(0, 0, 0, 0.15);
+    outline-offset: -4px;
+    border-radius: 2px;
+}
+
+/*
+ * Editor-only reminder rendered above the InnerBlocks slot when a
+ * block returns text from get_editor_notice(). In mode='preview' the
+ * ACF fields live only in the right-hand Block sidebar; this notice
+ * keeps that surface discoverable inside the canvas.
+ */
+.perimetre-block-preview__notice {
+    margin: 0 0 0.75rem;
+    padding: 0.625rem 0.875rem;
+    background: #fef3c7;
+    color: #78350f;
+    border-left: 3px solid #f59e0b;
+    border-radius: 2px;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
