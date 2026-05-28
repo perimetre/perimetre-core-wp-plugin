@@ -1,6 +1,6 @@
 # Perimetre Core
 
-Shared agency plugin for headless WordPress projects. Installed on every Perimetre project as a standard WordPress plugin.
+Shared agency plugin for Perimetre WordPress projects. Built for headless setups, but safe to drop into any standard WordPress site — every feature is opt-in and defaults to inert.
 
 Perimetre Core defines the rules. Project Core follows them.
 
@@ -34,8 +34,25 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 What it does **not** do:
 
 - Manage third-party plugins or dependencies
-- Handle frontend rendering (this is a headless setup)
+- Render block markup on its behalf — `AcfBlock` provides hooks (`render_preview()` / `render_frontend()`) but the markup is the subclass's job
 - Contain project-specific logic of any kind
+
+---
+
+## Where This Works
+
+Perimetre Core is designed for headless Perimetre projects but is safe to install on any standard WordPress site. The plugin's surface area is opt-in and the defaults don't change anything about a host site:
+
+- **Status endpoint** is off by default. While disabled, no rewrite rule is registered and no scheduled events run — the `/status` slug stays available for the host site to use.
+- **Webhooks** are off by default. The dispatcher doesn't fire until the master toggle is on and a URL is configured.
+- **Block abstracts** (`AcfBlock`, `NativeBlock`) only register blocks the host project explicitly opts into via `Registry::register_block()`. Existing ACF blocks registered the conventional way are untouched.
+- **GraphQL utilities** are no-ops unless WPGraphQL is installed and active.
+- **CTA helpers** are pure functions — they only run when called.
+
+How `AcfBlock` differs between contexts:
+
+- **Headless site:** the WordPress frontend isn't visited. The default `render_preview()` shows an editor placeholder and `render_frontend()` is a no-op (or emits the bare InnerBlocks token for nested-children blocks). Subclasses leave both alone — frontend rendering happens in the headless consumer.
+- **Standard site:** subclasses override `render_frontend()` with real markup (typically `get_field()` calls or a `template-parts/blocks/<slug>.php` include). The editor placeholder still shows in the canvas. See [Frontend rendering](#frontend-rendering) below.
 
 ---
 
@@ -227,6 +244,59 @@ The block is then queryable in GraphQL:
 }
 ```
 
+### InnerBlocks (optional)
+
+To allow nested child blocks inside an ACF block, override `get_inner_blocks_template()`. Returning a non-null template automatically bumps the block to `acf_block_version: 2` and merges `'jsx' => true` into `supports`, so the editor renders the InnerBlocks slot.
+
+```php
+protected function get_inner_blocks_template(): ?array
+{
+    return [
+        ['core/columns', [], [
+            ['core/column', [], []],
+            ['core/column', [], []],
+        ]],
+    ];
+}
+
+protected function get_allowed_blocks(): ?array
+{
+    return ['core/columns', 'core/column', 'core/paragraph'];
+}
+
+protected function get_template_lock(): false|string
+{
+    return 'all';
+}
+```
+
+`get_allowed_blocks()` returns the post-transform names (e.g. `acf/micro-bird-card`, `core/paragraph`). `get_template_lock()` accepts `false`, `'all'`, `'insert'`, or `'contentOnly'`.
+
+### Frontend rendering
+
+`AcfBlock::render()` dispatches to two protected methods:
+
+- `render_preview()` — what the block editor canvas shows. Default: a labeled placeholder div, or the InnerBlocks slot for blocks with a template.
+- `render_frontend()` — what visitors see on the public page. Default: nothing for plain blocks; the bare `<InnerBlocks />` JSX token for InnerBlocks-enabled blocks (so ACF v2 expands children at the right position).
+
+On a **headless site** the frontend isn't rendered by WordPress, so the defaults are correct as-is — leave both alone.
+
+On a **standard (non-headless) site**, override `render_frontend()` with real markup using `get_field()` calls (or include a `template-parts/blocks/<slug>.php` file). For InnerBlocks-enabled blocks, call `$this->emit_inner_blocks_token($this->get_inner_blocks_template())` from your override so child blocks still render at the desired position. You may also want to override `get_mode()` to return `'preview'` for live in-editor rendering.
+
+```php
+protected function render_frontend(array $block, string $content, int $post_id): void
+{
+    $heading = get_field('heading');
+    $subheading = get_field('subheading');
+    ?>
+    <section class="hero">
+        <h1><?= esc_html($heading) ?></h1>
+        <p><?= esc_html($subheading) ?></p>
+    </section>
+    <?php
+}
+```
+
 ---
 
 ## How to Create a Custom Native Block
@@ -375,9 +445,11 @@ if ($ctas) : ?>
 
 Perimetre Core includes a configurable health-check endpoint. Configure it under **Settings → Perimetre Core**.
 
+The endpoint is off by default and registers no rewrite rule, query var, or scheduled event until enabled — safe to install on a site that already uses the `/status` slug for something else.
+
 | Setting | Default | Description |
 |---|---|---|
-| Status enabled | Off | Enables the endpoint. When off, the URL returns a 404. |
+| Status enabled | Off | Enables the endpoint. While off, no rewrite rule is registered and the URL falls through to a regular 404. |
 | Status slug | `status` | The URL path (e.g. `https://example.com/status`). |
 | Secret token | Auto-generated | Required for the full health payload. |
 
@@ -397,10 +469,9 @@ Perimetre Core includes a configurable health-check endpoint. Configure it under
   "timestamp": "2026-04-02T12:00:00Z",
   "db": "ok",
   "cache": "ok",
-  "cron_last_run": "2026-04-02T11:00:00Z",
   "wp_version": "6.7",
   "php_version": "8.3.0",
-  "plugin_version": "1.3.0"
+  "plugin_version": "1.9.0"
 }
 ```
 
@@ -412,13 +483,14 @@ If any check fails, `status` becomes `"error"`, a `"failing"` array lists the fa
 |---|---|
 | `db` | `$wpdb->check_connection()` |
 | `cache` | `wp_using_ext_object_cache()` + set/get probe. Returns `"disabled"` when no external cache is active. |
-| `cron_last_run` | Recorded by an hourly cron event. `null` if never run. |
 
 ---
 
 ## Webhooks
 
 Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings > Perimetre Webhooks** (requires ACF Pro).
+
+Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `revalidateTag`), but the dispatch mechanism is generic — any HTTP-receiving consumer (sync jobs, automation tools, third-party integrations) can be the target. The master toggle is off by default; nothing fires until it's enabled and a URL is configured.
 
 ### Settings
 
@@ -533,13 +605,25 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.7.0**
+**1.9.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.9.0
+
+- Drop-in safety on non-headless sites: the `/status` rewrite rule now only registers when the endpoint is enabled, and the hourly status cron has been removed (`cron_last_run` is no longer in the payload — monitor `status` directly).
+- `AcfBlock::render()` split into protected `render_preview()` (editor canvas) and `render_frontend()` (public page) so the editor placeholder no longer leaks into rendered HTML on standard sites. Headless sites are unchanged — subclasses that don't override `render()` keep their existing editor preview.
+- Add `AcfBlock::get_mode()` override (defaults to `'edit'`) and `AcfBlock::emit_inner_blocks_token()` helper for subclasses overriding `render_frontend()`.
+
+**Upgrade note:** sites that previously ran 1.8.0 with the status endpoint enabled will have an orphaned `perimetre_status_cron` event scheduled. The action handler no longer exists so it's a silent no-op, but to clear it from the schedule, deactivate and reactivate the plugin after upgrading.
+
+### 1.8.0
+
+- Add opt-in InnerBlocks support to `AcfBlock`. Override `get_inner_blocks_template()` to enable nested children; `get_allowed_blocks()` and `get_template_lock()` restrict insertion and lock the template shape. When a template is returned, `acf_block_version` is bumped to 2 and `'jsx' => true` is merged into `supports` automatically.
 
 ### 1.7.0
 

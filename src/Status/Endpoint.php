@@ -10,26 +10,28 @@ namespace Perimetre\Core\Status;
 final class Endpoint
 {
     public const QUERY_VAR = 'perimetre_status';
-    public const CRON_HOOK = 'perimetre_status_cron';
 
     public static function register(): void
     {
-        add_action('init', [self::class, 'add_rewrite_rule']);
-        add_filter('query_vars', [self::class, 'add_query_var']);
+        // Only claim the URL path when the endpoint is enabled.
+        if (Settings::is_enabled()) {
+            add_action('init', [self::class, 'add_rewrite_rule']);
+            add_filter('query_vars', [self::class, 'add_query_var']);
+        }
+
         add_action('template_redirect', [self::class, 'handle_request']);
         add_action('admin_init', [self::class, 'maybe_flush_rewrite_rules']);
-
-        // Cron event to record last run time.
-        add_action(self::CRON_HOOK, [HealthChecks::class, 'record_cron_run']);
     }
 
     /**
-     * Schedule cron and flush rewrite rules on plugin activation.
+     * Flush rewrite rules on plugin activation if the endpoint is enabled.
+     * Fresh installs default to disabled, so this is a no-op until the
+     * setting is turned on (which sets the flush flag itself).
      */
     public static function activate(): void
     {
-        if (! wp_next_scheduled(self::CRON_HOOK)) {
-            wp_schedule_event(time(), 'hourly', self::CRON_HOOK);
+        if (! Settings::is_enabled()) {
+            return;
         }
 
         // Rewrite rule isn't registered yet at activation time,
@@ -107,7 +109,6 @@ final class Endpoint
      */
     public static function deactivate(): void
     {
-        wp_clear_scheduled_hook(self::CRON_HOOK);
         flush_rewrite_rules();
     }
 }

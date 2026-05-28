@@ -37,12 +37,14 @@ git tag v1.2.0 && git push origin v1.2.0
 
 **Two block types with different GraphQL patterns:**
 
-- `AcfBlock` (abstract) — ACF-based blocks. Fields registered via `acf_add_local_field_group()` produce typed GraphQL output through WPGraphQL for ACF. Queried as `... on XHeroBlock { hero { heading } }`.
+- `AcfBlock` (abstract) — ACF-based blocks. Fields registered via `acf_add_local_field_group()` produce typed GraphQL output through WPGraphQL for ACF. Queried as `... on XHeroBlock { hero { heading } }`. Opt-in InnerBlocks via `get_inner_blocks_template()` (with `get_allowed_blocks()` / `get_template_lock()` companions) — when non-null, registration auto-bumps `acf_block_version` to 2 and merges `'jsx' => true` into supports. `render()` dispatches to `render_preview()` (editor canvas, default: placeholder div / InnerBlocks slot) and `render_frontend()` (public page, default: empty or bare `<InnerBlocks />` token). Headless subclasses leave both alone; standard-site subclasses override `render_frontend()` with real markup. `get_mode()` defaults to `'edit'`; override to `'preview'` for live in-editor rendering on standard sites.
 - `NativeBlock` (abstract) — Gutenberg blocks with `block.json`. Attributes exposed via WPGraphQL Content Blocks under `attributes`. Queried as `... on XCalloutBlock { attributes { message } }`.
 
 **`Blocks\Registry`** — static registry. Project Core calls `Registry::register_block(ClassName::class)` on `plugins_loaded`; the registry instantiates and registers all blocks on `init`. Shared blocks go in `src/Blocks/Shared/` and are added in `register_shared_blocks()`.
 
 **`GraphQL\Registry`** — wrappers around WPGraphQL's `register_graphql_field()` and `register_graphql_object_type()` that enforce naming conventions at registration time (camelCase fields, PascalCase types). Violations trigger `_doing_it_wrong()` and block registration.
+
+**`Status\Endpoint`** — when the endpoint is disabled (default), no rewrite rule is registered and no cron is scheduled, so the plugin is a clean drop-in on standard WP sites. Enabling the toggle flags rewrite rules for flushing on the next admin page load.
 
 **`Webhook\Settings`** — registers an ACF options sub-page (Settings > Perimetre Webhooks) with fields for enable toggle, URL, secret token, watched post types, watched events, and request timeout. Provides cached static accessors for all settings.
 

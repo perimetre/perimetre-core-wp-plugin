@@ -9,8 +9,6 @@ namespace Perimetre\Core\Status;
  */
 final class HealthChecks
 {
-    public const CRON_OPTION = 'perimetre_status_cron_last_run';
-
     /**
      * Run all checks and return the full payload array.
      *
@@ -35,7 +33,6 @@ final class HealthChecks
             'timestamp' => gmdate('Y-m-d\TH:i:s\Z'),
             'db' => $db,
             'cache' => $cache,
-            'cron_last_run' => self::get_cron_last_run(),
             'wp_version' => get_bloginfo('version'),
             'php_version' => PHP_VERSION,
             'plugin_version' => PERIMETRE_CORE_VERSION,
@@ -70,28 +67,5 @@ final class HealthChecks
         wp_cache_delete($key, 'perimetre_status');
 
         return $retrieved === $value ? 'ok' : 'error';
-    }
-
-    /**
-     * @return string|null ISO 8601 UTC timestamp, or null if never recorded.
-     */
-    public static function get_cron_last_run(): ?string
-    {
-        $timestamp = get_option(self::CRON_OPTION, false);
-
-        if ($timestamp === false || $timestamp === '') {
-            return null;
-        }
-
-        return (string) $timestamp;
-    }
-
-    /**
-     * Record the current time as the last cron run.
-     * Called by the scheduled cron event.
-     */
-    public static function record_cron_run(): void
-    {
-        update_option(self::CRON_OPTION, gmdate('Y-m-d\TH:i:s\Z'), false);
     }
 }

@@ -145,6 +145,20 @@ abstract class AcfBlock
     }
 
     /**
+     * The block edit mode. Defaults to 'edit', which always shows the
+     * fields form in the editor — appropriate for headless setups where
+     * the public frontend renders elsewhere.
+     *
+     * Override to return 'preview' (live render of the block in place,
+     * with a sidebar form) or 'auto' (toggle on hover) on standard sites
+     * where `render_frontend()` produces real markup.
+     */
+    protected function get_mode(): string
+    {
+        return 'edit';
+    }
+
+    /**
      * Additional block supports configuration.
      *
      * Note: when get_inner_blocks_template() returns non-null, `'jsx' => true`
@@ -235,7 +249,8 @@ abstract class AcfBlock
     }
 
     /**
-     * Editor-preview render callback.
+     * ACF render callback. Dispatches to render_preview() in the editor
+     * and render_frontend() on the public page.
      *
      * Visibility is `public` (not `protected`) because ACF's
      * `acf_render_block()` calls `is_callable($block['render_callback'])`
@@ -246,26 +261,34 @@ abstract class AcfBlock
      * blocks). Subclasses overriding this method must keep the same
      * visibility — PHP forbids narrowing.
      *
-     * Default behavior:
-     *
-     *   - Without an InnerBlocks template configured: emits the legacy
-     *     placeholder div labeled with the block name and title.
-     *   - With a template configured: emits a `<InnerBlocks />` JSX tag
-     *     wrapped in a preview div, encoding `template`, `templateLock`,
-     *     and `allowedBlocks` as JSX attributes.
-     *
-     * Override to provide a richer custom preview. In a headless context
-     * this output is only consumed by the block editor — frontend
-     * rendering is handled by the headless consumer.
+     * Subclasses generally don't need to override `render()` itself —
+     * override `render_preview()` for editor chrome and `render_frontend()`
+     * for the public page output. Existing subclasses that already
+     * override `render()` keep working unchanged.
      *
      * @param array<string, mixed> $block
-     * @param string $content
-     * @param bool $is_preview
-     * @param int $post_id
      */
     public function render(array $block, string $content, bool $is_preview, int $post_id): void
     {
-        unset($block, $content, $is_preview, $post_id);
+        if ($is_preview) {
+            $this->render_preview($block, $content, $post_id);
+            return;
+        }
+
+        $this->render_frontend($block, $content, $post_id);
+    }
+
+    /**
+     * Editor-preview output. The default emits a labeled placeholder div,
+     * or a `<InnerBlocks />` JSX slot wrapped in a preview div when an
+     * InnerBlocks template is configured. Override to provide a richer
+     * editor preview.
+     *
+     * @param array<string, mixed> $block
+     */
+    protected function render_preview(array $block, string $content, int $post_id): void
+    {
+        unset($block, $content, $post_id);
 
         $template = $this->get_inner_blocks_template();
 
@@ -275,20 +298,60 @@ abstract class AcfBlock
             return;
         }
 
-        $allowed_blocks = $this->get_allowed_blocks();
-        $template_lock  = $this->get_template_lock();
-
         echo '<div class="perimetre-block-preview perimetre-block-preview--inner-blocks">';
+        $this->emit_inner_blocks_token($template);
+        echo '</div>';
+    }
+
+    /**
+     * Public-frontend output. The default emits nothing for plain blocks
+     * and the bare `<InnerBlocks />` JSX token for InnerBlocks-enabled
+     * blocks (so ACF v2 expands the children on the public page).
+     *
+     * On a headless site this output isn't visited — leave the default.
+     * On a standard WordPress site, override this method with real markup
+     * (typically using `get_field()` calls or by including a
+     * `template-parts/blocks/<slug>.php` file). Subclasses with
+     * InnerBlocks should call `$this->emit_inner_blocks_token()` from
+     * their override so child blocks still render at the desired position.
+     *
+     * @param array<string, mixed> $block
+     */
+    protected function render_frontend(array $block, string $content, int $post_id): void
+    {
+        unset($block, $content, $post_id);
+
+        $template = $this->get_inner_blocks_template();
+
+        if ($template === null) {
+            return;
+        }
+
+        $this->emit_inner_blocks_token($template);
+    }
+
+    /**
+     * Emit the `<InnerBlocks />` JSX token used by ACF v2 to render the
+     * nested children slot. Available to subclasses overriding
+     * `render_preview()` or `render_frontend()` so they don't re-derive
+     * the encoding.
+     *
+     * @param array<int, array<int, mixed>> $template
+     */
+    protected function emit_inner_blocks_token(array $template): void
+    {
+        $allowed = $this->get_allowed_blocks();
+        $lock    = $this->get_template_lock();
+
         echo '<InnerBlocks';
         echo ' template="' . esc_attr((string) wp_json_encode($template)) . '"';
-        if ($allowed_blocks !== null && $allowed_blocks !== []) {
-            echo ' allowedBlocks="' . esc_attr((string) wp_json_encode($allowed_blocks)) . '"';
+        if ($allowed !== null && $allowed !== []) {
+            echo ' allowedBlocks="' . esc_attr((string) wp_json_encode($allowed)) . '"';
         }
-        if ($template_lock !== false) {
-            echo ' templateLock="' . esc_attr($template_lock) . '"';
+        if ($lock !== false) {
+            echo ' templateLock="' . esc_attr($lock) . '"';
         }
         echo ' />';
-        echo '</div>';
     }
 
     /**
@@ -322,7 +385,7 @@ abstract class AcfBlock
             'description'     => $this->get_description(),
             'category'        => $this->get_category(),
             'icon'            => $this->get_icon(),
-            'mode'            => 'edit',
+            'mode'            => $this->get_mode(),
             'supports'        => $this->get_supports(),
             'render_callback' => [$this, 'render'],
             'show_in_graphql' => true,
