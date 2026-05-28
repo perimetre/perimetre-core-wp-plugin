@@ -30,6 +30,7 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 - Hosts shared blocks that are used across multiple projects (grows over time)
 - Provides a configurable status / health-check endpoint (DB, object cache, cron)
 - Provides configurable outgoing webhooks on post status changes (publish, draft, trash, delete)
+- Provides a Remote Login feature that lets the Helm portal SSO existing WP users in by email
 
 What it does **not** do:
 
@@ -45,6 +46,7 @@ Perimetre Core is designed for headless Perimetre projects but is safe to instal
 
 - **Status endpoint** is off by default. While disabled, no rewrite rule is registered and no scheduled events run — the `/status` slug stays available for the host site to use.
 - **Webhooks** are off by default. The dispatcher doesn't fire until the master toggle is on and a URL is configured.
+- **Remote Login** is off by default. The REST route exists once the plugin is active but rejects every request unless the toggle is on and the portal URL and API key are both set. No matching WP user — no login; no auto-creation.
 - **Block abstracts** (`AcfBlock`, `NativeBlock`) only register blocks the host project explicitly opts into via `Registry::register_block()`. Existing ACF blocks registered the conventional way are untouched.
 - **GraphQL utilities** are no-ops unless WPGraphQL is installed and active.
 - **CTA helpers** are pure functions — they only run when called.
@@ -117,12 +119,20 @@ perimetre-core/
 │   │   └── Shared/             Shared blocks used across projects. Empty initially.
 │   ├── GraphQL/
 │   │   └── Registry.php        GraphQL registration utilities. Enforces naming conventions.
+│   ├── Admin/
+│   │   └── Tabs.php            Shared tab strip for the Settings > Perimetre Core surface.
 │   ├── Status/
-│   │   ├── Settings.php        Admin settings page for the status endpoint.
+│   │   ├── Settings.php        Settings page owner + Status tab.
 │   │   ├── Endpoint.php        Rewrite rule, request handling, cron scheduling.
 │   │   └── HealthChecks.php    DB, cache, and cron health checks.
+│   ├── RemoteLogin/
+│   │   ├── Settings.php        Remote Login tab + auto-handshake on save.
+│   │   ├── Endpoint.php        WP REST route the portal redirects users to.
+│   │   ├── Auth.php            Verify token, consume jti at portal, set auth cookie.
+│   │   ├── Connect.php         Site-handshake POST to the portal.
+│   │   └── Token.php           HMAC-SHA256 token verification.
 │   └── Webhook/
-│       ├── Settings.php        ACF options page for webhook configuration.
+│       ├── Settings.php        Webhooks tab (ACF-backed) + menu-entry hiding.
 │       └── Dispatcher.php      Post status hooks and outgoing HTTP dispatch.
 ├── languages/
 │   ├── perimetre-core.pot      Translation template.
@@ -138,16 +148,22 @@ perimetre-core/
 All Perimetre Core classes live under the `Perimetre\Core` namespace, following PSR-4:
 
 ```
-Perimetre\Core\Plugin              →  src/Plugin.php
-Perimetre\Core\Blocks\Registry     →  src/Blocks/Registry.php
-Perimetre\Core\Blocks\AcfBlock     →  src/Blocks/AcfBlock.php
-Perimetre\Core\Blocks\NativeBlock  →  src/Blocks/NativeBlock.php
-Perimetre\Core\GraphQL\Registry    →  src/GraphQL/Registry.php
-Perimetre\Core\Status\Settings     →  src/Status/Settings.php
-Perimetre\Core\Status\Endpoint     →  src/Status/Endpoint.php
-Perimetre\Core\Status\HealthChecks →  src/Status/HealthChecks.php
-Perimetre\Core\Webhook\Settings    →  src/Webhook/Settings.php
-Perimetre\Core\Webhook\Dispatcher  →  src/Webhook/Dispatcher.php
+Perimetre\Core\Plugin                 →  src/Plugin.php
+Perimetre\Core\Blocks\Registry        →  src/Blocks/Registry.php
+Perimetre\Core\Blocks\AcfBlock        →  src/Blocks/AcfBlock.php
+Perimetre\Core\Blocks\NativeBlock     →  src/Blocks/NativeBlock.php
+Perimetre\Core\GraphQL\Registry       →  src/GraphQL/Registry.php
+Perimetre\Core\Admin\Tabs             →  src/Admin/Tabs.php
+Perimetre\Core\Status\Settings        →  src/Status/Settings.php
+Perimetre\Core\Status\Endpoint        →  src/Status/Endpoint.php
+Perimetre\Core\Status\HealthChecks    →  src/Status/HealthChecks.php
+Perimetre\Core\RemoteLogin\Settings   →  src/RemoteLogin/Settings.php
+Perimetre\Core\RemoteLogin\Endpoint   →  src/RemoteLogin/Endpoint.php
+Perimetre\Core\RemoteLogin\Auth       →  src/RemoteLogin/Auth.php
+Perimetre\Core\RemoteLogin\Connect    →  src/RemoteLogin/Connect.php
+Perimetre\Core\RemoteLogin\Token      →  src/RemoteLogin/Token.php
+Perimetre\Core\Webhook\Settings       →  src/Webhook/Settings.php
+Perimetre\Core\Webhook\Dispatcher     →  src/Webhook/Dispatcher.php
 ```
 
 ---
@@ -488,7 +504,7 @@ If any check fails, `status` becomes `"error"`, a `"failing"` array lists the fa
 
 ## Webhooks
 
-Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings > Perimetre Webhooks** (requires ACF Pro).
+Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings → Perimetre Core**, on the **Webhooks** tab (requires ACF Pro).
 
 Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `revalidateTag`), but the dispatch mechanism is generic — any HTTP-receiving consumer (sync jobs, automation tools, third-party integrations) can be the target. The master toggle is off by default; nothing fires until it's enabled and a URL is configured.
 
@@ -605,13 +621,19 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.10.0**
+**1.11.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.11.0
+
+- Add **Remote Login** feature: WP REST endpoint (`/wp-json/perimetre-core/v1/remote-login`) that accepts an HMAC-SHA256 signed token from the Helm portal, consumes the `jti` server-side at the portal (single-use enforced there), and logs the matching WP user in via `wp_set_auth_cookie`. No matching WP user means no login — never auto-creates users. Disabled and inert by default.
+- Unify the admin surface under a single **Settings → Perimetre Core** menu entry with a tab strip (`Admin\Tabs`): **Status**, **Remote Login**, **Webhooks**. The Webhooks tab links to the existing ACF options page; its standalone menu entry is hidden via `remove_submenu_page()` so both pages appear as tabs on one surface.
+- Remote Login auto-handshake on save: saving the Remote Login tab POSTs to `{portalUrl}/api/sites/connect` with `Authorization: Bearer <apiKey>` and surfaces the result as an admin notice. No separate "Connect" button — saves and handshakes always run against the same persisted values.
 
 ### 1.10.0
 

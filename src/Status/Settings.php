@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Perimetre\Core\Status;
 
+use Perimetre\Core\Admin\Tabs;
+use Perimetre\Core\RemoteLogin\Settings as RemoteLoginSettings;
+
 /**
- * Registers the Status settings section on the Perimetre Core admin page.
+ * Owns the top-level "Perimetre Core" settings page under Settings, and
+ * registers the Status tab on it. Other modules (RemoteLogin) hang their
+ * sections off the same page via tabs rendered by `Admin\Tabs`.
  */
 final class Settings
 {
@@ -14,6 +19,13 @@ final class Settings
     public const OPTION_TOKEN = 'perimetre_status_token';
     public const PAGE_SLUG = 'perimetre-core';
     public const SECTION_ID = 'perimetre_status_section';
+
+    /**
+     * Internal page slug used with `add_settings_section`/`do_settings_sections`
+     * so the Status fields only render on the Status tab. The form still
+     * submits under the `perimetre-core` option group (PAGE_SLUG).
+     */
+    public const SECTION_PAGE = 'perimetre-core-status';
 
     private const DEFAULT_SLUG = 'status';
 
@@ -36,11 +48,23 @@ final class Settings
 
     public static function render_page(): void
     {
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only tab switch, no state mutation
+        $active = isset($_GET['tab']) ? sanitize_key((string) $_GET['tab']) : Tabs::TAB_STATUS;
+        // phpcs:enable WordPress.Security.NonceVerification.Recommended
+        if (! in_array($active, [Tabs::TAB_STATUS, Tabs::TAB_REMOTE_LOGIN], true)) {
+            $active = Tabs::TAB_STATUS;
+        }
+
+        $section_page = $active === Tabs::TAB_REMOTE_LOGIN
+            ? RemoteLoginSettings::SECTION_PAGE
+            : self::SECTION_PAGE;
+
         echo '<div class="wrap">';
-        echo '<h1>' . esc_html(get_admin_page_title()) . '</h1>';
+        echo '<h1>' . esc_html__('Perimetre Core', 'perimetre-core') . '</h1>';
+        Tabs::render($active);
         echo '<form method="post" action="options.php">';
         settings_fields(self::PAGE_SLUG);
-        do_settings_sections(self::PAGE_SLUG);
+        do_settings_sections($section_page);
         submit_button();
         echo '</form>';
         echo '</div>';
@@ -52,7 +76,7 @@ final class Settings
             self::SECTION_ID,
             __('Status Endpoint', 'perimetre-core'),
             [self::class, 'render_section_description'],
-            self::PAGE_SLUG
+            self::SECTION_PAGE
         );
 
         // Enabled checkbox
@@ -65,7 +89,7 @@ final class Settings
             self::OPTION_ENABLED,
             __('Status enabled', 'perimetre-core'),
             [self::class, 'render_enabled_field'],
-            self::PAGE_SLUG,
+            self::SECTION_PAGE,
             self::SECTION_ID
         );
 
@@ -79,7 +103,7 @@ final class Settings
             self::OPTION_SLUG,
             __('Status slug', 'perimetre-core'),
             [self::class, 'render_slug_field'],
-            self::PAGE_SLUG,
+            self::SECTION_PAGE,
             self::SECTION_ID
         );
 
@@ -93,7 +117,7 @@ final class Settings
             self::OPTION_TOKEN,
             __('Secret token', 'perimetre-core'),
             [self::class, 'render_token_field'],
-            self::PAGE_SLUG,
+            self::SECTION_PAGE,
             self::SECTION_ID
         );
     }

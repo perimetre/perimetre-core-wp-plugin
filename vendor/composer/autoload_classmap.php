@@ -7,11 +7,17 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
+    'Perimetre\\Core\\Admin\\Tabs' => $baseDir . '/src/Admin/Tabs.php',
     'Perimetre\\Core\\Blocks\\AcfBlock' => $baseDir . '/src/Blocks/AcfBlock.php',
     'Perimetre\\Core\\Blocks\\NativeBlock' => $baseDir . '/src/Blocks/NativeBlock.php',
     'Perimetre\\Core\\Blocks\\Registry' => $baseDir . '/src/Blocks/Registry.php',
     'Perimetre\\Core\\GraphQL\\Registry' => $baseDir . '/src/GraphQL/Registry.php',
     'Perimetre\\Core\\Plugin' => $baseDir . '/src/Plugin.php',
+    'Perimetre\\Core\\RemoteLogin\\Auth' => $baseDir . '/src/RemoteLogin/Auth.php',
+    'Perimetre\\Core\\RemoteLogin\\Connect' => $baseDir . '/src/RemoteLogin/Connect.php',
+    'Perimetre\\Core\\RemoteLogin\\Endpoint' => $baseDir . '/src/RemoteLogin/Endpoint.php',
+    'Perimetre\\Core\\RemoteLogin\\Settings' => $baseDir . '/src/RemoteLogin/Settings.php',
+    'Perimetre\\Core\\RemoteLogin\\Token' => $baseDir . '/src/RemoteLogin/Token.php',
     'Perimetre\\Core\\Status\\Endpoint' => $baseDir . '/src/Status/Endpoint.php',
     'Perimetre\\Core\\Status\\HealthChecks' => $baseDir . '/src/Status/HealthChecks.php',
     'Perimetre\\Core\\Status\\Settings' => $baseDir . '/src/Status/Settings.php',

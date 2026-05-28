@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Perimetre Core
  * Description: Shared agency plugin for headless WordPress projects.
- * Version: 1.10.0
+ * Version: 1.11.0
  * Author: Perimetre
  * Author URI: https://perimetre.co
  * Requires at least: 6.4
@@ -18,7 +18,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('PERIMETRE_CORE_VERSION', '1.10.0');
+define('PERIMETRE_CORE_VERSION', '1.11.0');
 define('PERIMETRE_CORE_FILE', __FILE__);
 define('PERIMETRE_CORE_PATH', plugin_dir_path(__FILE__));
 define('PERIMETRE_CORE_URL', plugin_dir_url(__FILE__));
@@ -29,6 +29,8 @@ require_once PERIMETRE_CORE_PATH . 'src/Acf/cta-fields.php';
 use Perimetre\Core\Blocks\Registry as BlockRegistry;
 use Perimetre\Core\GraphQL\Registry as GraphQLRegistry;
 use Perimetre\Core\Plugin;
+use Perimetre\Core\RemoteLogin\Endpoint as RemoteLoginEndpoint;
+use Perimetre\Core\RemoteLogin\Settings as RemoteLoginSettings;
 use Perimetre\Core\Status\Endpoint as StatusEndpoint;
 use Perimetre\Core\Status\Settings as StatusSettings;
 use Perimetre\Core\Webhook\Dispatcher as WebhookDispatcher;
@@ -73,6 +75,14 @@ StatusEndpoint::register();
  */
 WebhookSettings::register();
 WebhookDispatcher::register();
+
+/**
+ * Bootstrap remote-login settings and REST endpoint. The portal handshake
+ * runs automatically after every settings save — there is no separate
+ * Connect action class.
+ */
+RemoteLoginSettings::register();
+RemoteLoginEndpoint::register();
 
 /**
  * Enqueue the block-editor stylesheet that styles the InnerBlocks
