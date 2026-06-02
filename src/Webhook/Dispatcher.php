@@ -316,7 +316,7 @@ final class Dispatcher
      */
     private static function dispatch(array $payload): void
     {
-        wp_remote_post(Settings::get_url(), [
+        $args = [
             'body'     => wp_json_encode($payload),
             'headers'  => [
                 'Content-Type'  => 'application/json',
@@ -324,6 +324,10 @@ final class Dispatcher
             ],
             'timeout'  => Settings::get_timeout(),
             'blocking' => false,
-        ]);
+        ];
+
+        foreach (Settings::get_urls() as $url) {
+            wp_remote_post($url, $args);
+        }
     }
 }

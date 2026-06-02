@@ -506,15 +506,15 @@ If any check fails, `status` becomes `"error"`, a `"failing"` array lists the fa
 
 Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings → Perimetre Core**, on the **Webhooks** tab (requires ACF Pro).
 
-Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `revalidateTag`), but the dispatch mechanism is generic — any HTTP-receiving consumer (sync jobs, automation tools, third-party integrations) can be the target. The master toggle is off by default; nothing fires until it's enabled and a URL is configured.
+Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `revalidateTag`), but the dispatch mechanism is generic — any HTTP-receiving consumer (sync jobs, automation tools, third-party integrations) can be the target. The master toggle is off by default; nothing fires until it's enabled and at least one URL is configured. Each watched event is dispatched to every configured URL.
 
 ### Settings
 
 | Setting | Default | Description |
 |---|---|---|
 | Enable Webhooks | Off | Master toggle. When off, no requests are sent. |
-| Webhook URL | — | The endpoint that receives the POST request. |
-| Secret Token | — | Sent as a `Bearer` token in the `Authorization` header. |
+| Webhook URLs | — | One or more endpoints that receive the POST request. Add as many as needed; every URL receives each event. |
+| Secret Token | — | Sent as a `Bearer` token in the `Authorization` header on every request. |
 | Watched Post Types | All public types | Which post types trigger webhooks. Leave empty to watch all. |
 | Watched Events | Publish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates). |
 | Request Timeout (s) | 5 | HTTP timeout (1–30 seconds). Requests are non-blocking. |
@@ -621,13 +621,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.11.0**
+**1.12.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.12.0
+
+- Webhooks now support **multiple URLs**: the single Webhook URL field is replaced by a repeater so any number of endpoints can be added. Each watched event is dispatched to every configured URL, all sharing the same secret token. Existing single-URL configs keep firing via a backward-compat fallback to the legacy `options_perimetre_webhook_url` value.
 
 ### 1.11.0
 

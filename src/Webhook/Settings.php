@@ -100,16 +100,30 @@ final class Settings
                     'ui'            => 1,
                     'default_value' => 0,
                     'instructions'  => __(
-                        'Fires a JSON POST request to the configured URL on watched events '
+                        'Fires a JSON POST request to each configured URL on watched events '
                         . '(post changes, options saves, menu updates).',
                         'perimetre-core'
                     ),
                 ],
                 [
-                    'key'               => 'field_perimetre_webhook_url',
-                    'name'              => 'perimetre_webhook_url',
-                    'label'             => __('Webhook URL', 'perimetre-core'),
-                    'type'              => 'url',
+                    'key'               => 'field_perimetre_webhook_urls',
+                    'name'              => 'perimetre_webhook_urls',
+                    'label'             => __('Webhook URLs', 'perimetre-core'),
+                    'type'              => 'repeater',
+                    'layout'            => 'table',
+                    'button_label'      => __('Add URL', 'perimetre-core'),
+                    'instructions'      => __(
+                        'Each watched event is dispatched to every URL listed here.',
+                        'perimetre-core'
+                    ),
+                    'sub_fields'        => [
+                        [
+                            'key'   => 'field_perimetre_webhook_url',
+                            'name'  => 'url',
+                            'label' => __('URL', 'perimetre-core'),
+                            'type'  => 'url',
+                        ],
+                    ],
                     'conditional_logic' => [
                         [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
                     ],
@@ -220,8 +234,8 @@ final class Settings
         return
             '<p>'
             . esc_html__(
-                'Fires a JSON POST request to the configured URL on watched events. '
-                . 'The request includes an Authorization: Bearer header with the secret token.',
+                'Fires a JSON POST request to each configured URL on watched events. '
+                . 'Every request includes an Authorization: Bearer header with the secret token.',
                 'perimetre-core'
             )
             . '</p>'
@@ -279,7 +293,7 @@ final class Settings
         if (! function_exists('get_field')) {
             self::$options = [
                 'enabled'    => false,
-                'url'        => '',
+                'urls'       => [],
                 'secret'     => '',
                 'post_types' => [],
                 'events'     => [],
@@ -302,7 +316,7 @@ final class Settings
 
         self::$options = [
             'enabled'    => (bool) get_field('perimetre_webhook_enabled', 'option'),
-            'url'        => (string) (get_field('perimetre_webhook_url', 'option') ?? ''),
+            'urls'       => self::read_urls(),
             'secret'     => (string) (get_field('perimetre_webhook_secret', 'option') ?? ''),
             'post_types' => $post_types,
             'events'     => $events,
@@ -312,14 +326,49 @@ final class Settings
         return self::$options;
     }
 
+    /**
+     * Read the configured webhook URLs from the repeater, falling back to the
+     * legacy single-URL option saved before the repeater existed.
+     *
+     * @return list<string>
+     */
+    private static function read_urls(): array
+    {
+        $urls = [];
+
+        $rows = get_field('perimetre_webhook_urls', 'option');
+        if (is_array($rows)) {
+            foreach ($rows as $row) {
+                $url = is_array($row) && isset($row['url']) ? $row['url'] : '';
+                $url = is_string($url) ? trim($url) : '';
+                if ($url !== '') {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        // Backward compatibility: a single URL stored before the repeater.
+        if ($urls === []) {
+            $legacy = get_option('options_perimetre_webhook_url');
+            if (is_string($legacy) && trim($legacy) !== '') {
+                $urls[] = trim($legacy);
+            }
+        }
+
+        return $urls;
+    }
+
     public static function is_enabled(): bool
     {
         return self::get_settings()['enabled'];
     }
 
-    public static function get_url(): string
+    /**
+     * @return list<string>
+     */
+    public static function get_urls(): array
     {
-        return self::get_settings()['url'];
+        return self::get_settings()['urls'];
     }
 
     public static function get_secret(): string
@@ -350,6 +399,6 @@ final class Settings
 
     public static function can_dispatch(): bool
     {
-        return self::is_enabled() && self::get_url() !== '' && self::get_secret() !== '';
+        return self::is_enabled() && self::get_urls() !== [] && self::get_secret() !== '';
     }
 }
