@@ -27,6 +27,7 @@ require_once PERIMETRE_CORE_PATH . 'vendor/autoload.php';
 require_once PERIMETRE_CORE_PATH . 'src/Acf/cta-fields.php';
 
 use Perimetre\Core\Blocks\Registry as BlockRegistry;
+use Perimetre\Core\GraphQL\CacheControl as GraphQLCacheControl;
 use Perimetre\Core\GraphQL\Registry as GraphQLRegistry;
 use Perimetre\Core\Plugin;
 use Perimetre\Core\RemoteLogin\Endpoint as RemoteLoginEndpoint;
@@ -63,6 +64,11 @@ add_action('init', [BlockRegistry::class, 'register'], 5);
  * Bootstrap GraphQL type and field registration.
  */
 add_action('graphql_register_types', [GraphQLRegistry::class, 'register']);
+
+/**
+ * Opt-in per-request edge caching of WPGraphQL responses (?edgeCache=<seconds>).
+ */
+GraphQLCacheControl::register();
 
 /**
  * Bootstrap status endpoint settings and rewrite rule.
