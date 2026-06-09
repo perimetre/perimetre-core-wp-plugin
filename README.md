@@ -621,13 +621,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.12.0**
+**1.13.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.13.0
+
+- Add **opt-in per-request edge caching** for WPGraphQL (`GraphQL\CacheControl`). The frontend appends a `?edgeCache=<seconds>` query var to specific calls (search, build-time) to make that response cacheable; the global default stays uncacheable so nothing else is affected. A `graphql_response_headers_to_send` filter (registered at `PHP_INT_MAX`, after WPGraphQL Smart Cache) sets `Cache-Control: max-age/s-maxage` from the requested TTL, capped at 3600s. Logged-in requests stay no-store, and invalidation is TTL-only (Cloudways/Varnish cannot purge by tag), so keep TTLs short (30–60s) where staleness is user-visible.
 
 ### 1.12.0
 
