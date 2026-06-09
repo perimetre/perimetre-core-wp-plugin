@@ -30,6 +30,7 @@ class ComposerStaticInitb113275a202d8e3b5c32f974a7436223
         'Perimetre\\Core\\Blocks\\AcfBlock' => __DIR__ . '/../..' . '/src/Blocks/AcfBlock.php',
         'Perimetre\\Core\\Blocks\\NativeBlock' => __DIR__ . '/../..' . '/src/Blocks/NativeBlock.php',
         'Perimetre\\Core\\Blocks\\Registry' => __DIR__ . '/../..' . '/src/Blocks/Registry.php',
+        'Perimetre\\Core\\GraphQL\\CacheControl' => __DIR__ . '/../..' . '/src/GraphQL/CacheControl.php',
         'Perimetre\\Core\\GraphQL\\Registry' => __DIR__ . '/../..' . '/src/GraphQL/Registry.php',
         'Perimetre\\Core\\Plugin' => __DIR__ . '/../..' . '/src/Plugin.php',
         'Perimetre\\Core\\RemoteLogin\\Auth' => __DIR__ . '/../..' . '/src/RemoteLogin/Auth.php',

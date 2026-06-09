@@ -11,6 +11,7 @@ return array(
     'Perimetre\\Core\\Blocks\\AcfBlock' => $baseDir . '/src/Blocks/AcfBlock.php',
     'Perimetre\\Core\\Blocks\\NativeBlock' => $baseDir . '/src/Blocks/NativeBlock.php',
     'Perimetre\\Core\\Blocks\\Registry' => $baseDir . '/src/Blocks/Registry.php',
+    'Perimetre\\Core\\GraphQL\\CacheControl' => $baseDir . '/src/GraphQL/CacheControl.php',
     'Perimetre\\Core\\GraphQL\\Registry' => $baseDir . '/src/GraphQL/Registry.php',
     'Perimetre\\Core\\Plugin' => $baseDir . '/src/Plugin.php',
     'Perimetre\\Core\\RemoteLogin\\Auth' => $baseDir . '/src/RemoteLogin/Auth.php',
