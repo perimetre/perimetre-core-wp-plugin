@@ -148,7 +148,7 @@ final class Settings
                     'type'              => 'checkbox',
                     'choices'           => [],
                     'instructions'      => __(
-                        'Leave all unchecked to watch every public post type.',
+                        'Leave all unchecked to watch every public or GraphQL-exposed post type.',
                         'perimetre-core'
                     ),
                     'conditional_logic' => [
@@ -268,15 +268,28 @@ final class Settings
      */
     public static function populate_post_type_choices(array $field): array
     {
-        $post_types = get_post_types(['public' => true], 'objects');
-        unset($post_types['attachment']);
-
         $field['choices'] = [];
-        foreach ($post_types as $post_type) {
+        foreach (self::get_watchable_post_types() as $post_type) {
             $field['choices'][$post_type->name] = $post_type->label;
         }
 
         return $field;
+    }
+
+    /**
+     * Post types eligible for webhook watching: anything public OR exposed to
+     * GraphQL (headless CPTs are often registered public => false). Excludes
+     * attachments.
+     *
+     * @return array<string, \WP_Post_Type>
+     */
+    private static function get_watchable_post_types(): array
+    {
+        $types = get_post_types(['public' => true], 'objects')
+            + get_post_types(['show_in_graphql' => true], 'objects');
+        unset($types['attachment']);
+
+        return $types;
     }
 
     /**
@@ -304,9 +317,7 @@ final class Settings
 
         $post_types = get_field('perimetre_webhook_post_types', 'option');
         if (empty($post_types) || ! is_array($post_types)) {
-            $all = get_post_types(['public' => true], 'names');
-            unset($all['attachment']);
-            $post_types = array_values($all);
+            $post_types = array_keys(self::get_watchable_post_types());
         }
 
         $events = get_field('perimetre_webhook_events', 'option');

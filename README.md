@@ -621,13 +621,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.13.0**
+**1.13.1**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.13.1
+
+- Fix **Watched Post Types** on the Webhooks settings page omitting headless CPTs. The checkbox list (and the "watch everything" default fallback) enumerated post types with `get_post_types(['public' => true])`, so CPTs registered the headless way (`public => false, show_in_graphql => true`) never appeared and never fired webhooks. Enumeration now unions public **and** GraphQL-exposed post types (minus `attachment`) via a shared `Webhook\Settings::get_watchable_post_types()` helper.
 
 ### 1.13.0
 
