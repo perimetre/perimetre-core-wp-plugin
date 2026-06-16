@@ -621,13 +621,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.14.0**
+**1.14.1**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.14.1
+
+- **Friendlier headless editor preview.** Since v3 made the preview the only on-canvas surface, the default `AcfBlock::render_preview()` now renders a **content-summary card** — block icon + title, then an auto-generated snapshot of the block's filled ACF fields (`get_field_objects()`): truncated text, image thumbnails, Yes/No toggles, link labels, and "N items" counts. Unsupported and empty fields are omitted; blocks with nothing entered show a muted "add content" hint. Requires no per-block code. Customize via the new optional `AcfBlock::get_preview_summary()` hook (return a curated `label => value` array), or override `render_preview()` for full control. Editor-only — frontend/GraphQL output is unaffected.
 
 ### 1.14.0
 
