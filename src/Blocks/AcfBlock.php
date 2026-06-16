@@ -145,44 +145,10 @@ abstract class AcfBlock
     }
 
     /**
-     * The ACF block render mode. One of:
-     *
-     *   - 'edit'    — always show ACF fields in the canvas; the render
-     *                 output (and any `<InnerBlocks />` token in it) is
-     *                 hidden.
-     *   - 'preview' — always show the render output in the canvas; the
-     *                 ACF fields are only reachable from the Block
-     *                 sidebar.
-     *   - 'auto'    — show fields when the block is selected, render
-     *                 output when it isn't (default ACF v2 behavior for
-     *                 most blocks).
-     *
-     * The default adapts to whether InnerBlocks are configured:
-     *
-     *   - With InnerBlocks: 'preview'. The render template (which holds
-     *     the visible `<InnerBlocks />` slot) must always be on canvas
-     *     so authors can drag/drop and use the appender. Fields stay
-     *     reachable in the right-hand Block sidebar; subclasses can also
-     *     override get_editor_notice() to surface a reminder near the
-     *     slot.
-     *   - Without InnerBlocks: 'edit'. Same behavior as before this
-     *     hook existed — fields-only blocks render the field UI in the
-     *     canvas and have nothing else to show.
-     *
-     * Override to force a specific mode (e.g. 'auto' for a field-heavy
-     * InnerBlocks block where authors prefer toggling between surfaces).
-     */
-    protected function get_mode(): string
-    {
-        return $this->get_inner_blocks_template() !== null ? 'preview' : 'edit';
-    }
-
-    /**
      * Optional editor-only notice rendered above the InnerBlocks slot.
-     * Useful for blocks in mode='preview' where the ACF fields live only
-     * in the right-hand sidebar — a short reminder like "don't forget to
-     * fill in the heading data in the Block panel" keeps that surface
-     * discoverable.
+     * Useful for blocks whose ACF fields live only in the Block sidebar —
+     * a short reminder like "don't forget to fill in the heading data in
+     * the Block panel" keeps that surface discoverable.
      *
      * Return null (default) to skip the notice. Plain text only; HTML
      * is escaped before output. Only consulted when
@@ -214,17 +180,13 @@ abstract class AcfBlock
      * Inner-blocks template, in WordPress's `[name, attrs, innerBlocks]`
      * shape. Return non-null to enable an InnerBlocks slot for this block.
      *
-     * Returning a non-null value triggers two automatic registration
-     * adjustments so the JSX `<InnerBlocks />` token in the render
-     * template actually reaches the editor canvas:
-     *
-     *   1. `acf_block_version` is bumped to 2 — required so ACF maps
-     *      `<InnerBlocks />` to its wrapper component (which honors
-     *      `template`, `templateLock`, and `allowedBlocks` JSX
-     *      attributes). v1 maps it to a bare wp.blockEditor component
-     *      that ignores those attributes.
-     *   2. `'jsx' => true` is merged into `get_supports()` so the render
-     *      output is parsed as JSX in the editor.
+     * Returning a non-null value merges `'jsx' => true` into
+     * `get_supports()` so the render output is parsed as JSX in the
+     * editor and the `<InnerBlocks />` token reaches the canvas. Blocks
+     * are always registered as ACF Blocks v3 (`acf_block_version => 3`),
+     * which maps `<InnerBlocks />` to ACF's wrapper component (honoring
+     * the `template`, `templateLock`, and `allowedBlocks` JSX
+     * attributes).
      *
      * The shape mirrors WordPress's block-template format:
      *
@@ -421,20 +383,20 @@ abstract class AcfBlock
         }
 
         $args = [
-            'name'            => $this->get_name(),
-            'title'           => $this->get_title(),
-            'description'     => $this->get_description(),
-            'category'        => $this->get_category(),
-            'icon'            => $this->get_icon(),
-            'mode'            => $this->get_mode(),
-            'supports'        => $this->get_supports(),
-            'render_callback' => [$this, 'render'],
-            'show_in_graphql' => true,
+            'name'              => $this->get_name(),
+            'title'             => $this->get_title(),
+            'description'       => $this->get_description(),
+            'category'          => $this->get_category(),
+            'icon'              => $this->get_icon(),
+            'supports'          => $this->get_supports(),
+            'render_callback'   => [$this, 'render'],
+            'show_in_graphql'   => true,
+            'api_version'       => 3,
+            'acf_block_version' => 3,
         ];
 
         if ($this->get_inner_blocks_template() !== null) {
-            $args['acf_block_version'] = 2;
-            $args['supports']['jsx']   = true;
+            $args['supports']['jsx'] = true;
         }
 
         acf_register_block_type($args);

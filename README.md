@@ -621,13 +621,20 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.13.1**
+**1.14.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.14.0
+
+- Register all ACF blocks as **ACF Blocks v3 / WordPress Block API v3** (`api_version => 3`, `acf_block_version => 3`). WordPress 6.9 emits a console deprecation warning for blocks registered with API version ≤ 2 ("Block with API version 2 or lower is deprecated since version 6.9"), and WordPress 7.0 will enforce v3. This silences the warning on every ACF block and makes blocks iframe-editor compatible.
+- **Requires ACF Pro ≥ 6.6** (the floor for ACF Blocks v3).
+- **Breaking:** removed `AcfBlock::get_mode()`. ACF Blocks v3 drops the edit/preview "mode" concept — blocks always render their preview template on the canvas while ACF fields move to the Block sidebar / slide-out modal, so the `mode` arg is ignored. Any Project Core subclass overriding `get_mode()` now has a dead override (no error, but it has no effect). `get_inner_blocks_template()` still merges `'jsx' => true` into supports for the `<InnerBlocks />` slot.
+- `NativeBlock` subclass `block.json` files should declare `"apiVersion": 3`.
 
 ### 1.13.1
 
