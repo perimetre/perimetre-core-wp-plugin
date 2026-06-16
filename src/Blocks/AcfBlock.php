@@ -160,6 +160,30 @@ abstract class AcfBlock
     }
 
     /**
+     * Optional curated content summary for the editor preview card.
+     *
+     * The default editor preview (see render_preview()) auto-summarizes the
+     * block's ACF fields with no per-block code. Override this to control
+     * exactly which rows appear instead, without re-implementing the card
+     * chrome: return an associative `label => value` array. Both label and
+     * value are output as raw HTML and are NOT escaped — callers are
+     * responsible for escaping any user-derived content (e.g. wrap values in
+     * esc_html()).
+     *
+     * Return null (default) to keep the automatic ACF-field summary. For full
+     * control over the preview markup, override render_preview() instead.
+     *
+     * @param array<string, mixed> $block
+     * @return array<string, string>|null
+     */
+    protected function get_preview_summary(array $block): ?array
+    {
+        unset($block);
+
+        return null;
+    }
+
+    /**
      * Additional block supports configuration.
      *
      * Note: when get_inner_blocks_template() returns non-null, `'jsx' => true`
@@ -276,34 +300,239 @@ abstract class AcfBlock
     }
 
     /**
-     * Editor-preview output. The default emits a labeled placeholder div,
-     * or a `<InnerBlocks />` JSX slot wrapped in a preview div when an
-     * InnerBlocks template is configured. Override to provide a richer
-     * editor preview.
+     * Editor-preview output. The default renders a content-summary card —
+     * the block icon and title, followed by a snapshot of the block's
+     * filled ACF fields (see render_preview_summary()) — so authors can
+     * tell blocks apart and confirm their content on a headless site that
+     * has no real frontend rendering. When an InnerBlocks template is
+     * configured, the `<InnerBlocks />` JSX slot is appended below the card.
+     *
+     * Three ways to customize, none required (see also get_preview_summary()):
+     *   1. Do nothing — inherit the automatic field summary.
+     *   2. Override get_preview_summary() to curate the summary rows.
+     *   3. Override this method for full control over the preview markup.
      *
      * @param array<string, mixed> $block
      */
     protected function render_preview(array $block, string $content, int $post_id): void
     {
-        unset($block, $content, $post_id);
+        unset($content, $post_id);
 
         $template = $this->get_inner_blocks_template();
-
-        if ($template === null) {
-            $label = $this->get_name() . ': ' . $this->get_title();
-            echo '<div class="perimetre-block-preview">' . esc_html($label) . '</div>';
-            return;
+        $classes  = 'perimetre-block-preview';
+        if ($template !== null) {
+            $classes .= ' perimetre-block-preview--inner-blocks';
         }
 
-        echo '<div class="perimetre-block-preview perimetre-block-preview--inner-blocks">';
+        echo '<div class="' . esc_attr($classes) . '">';
+
+        $this->render_preview_header();
 
         $notice = $this->get_editor_notice();
         if (is_string($notice) && $notice !== '') {
             echo '<p class="perimetre-block-preview__notice">' . esc_html($notice) . '</p>';
         }
 
-        $this->emit_inner_blocks_token($template);
+        $this->render_preview_summary($block);
+
+        if ($template !== null) {
+            $this->emit_inner_blocks_token($template);
+        }
+
         echo '</div>';
+    }
+
+    /**
+     * Render the preview card header — the block icon followed by its title.
+     * The icon is either a Dashicon slug (rendered as a dashicons span) or a
+     * raw inline SVG string, mirroring get_icon()'s contract.
+     */
+    protected function render_preview_header(): void
+    {
+        $icon = $this->get_icon();
+
+        echo '<div class="perimetre-block-preview__head">';
+
+        if (str_starts_with(ltrim($icon), '<svg')) {
+            echo '<span class="perimetre-block-preview__icon">' . $icon . '</span>';
+        } elseif ($icon !== '') {
+            echo '<span class="perimetre-block-preview__icon dashicons dashicons-'
+                . esc_attr($icon) . '"></span>';
+        }
+
+        echo '<span class="perimetre-block-preview__title">'
+            . esc_html($this->get_title()) . '</span>';
+        echo '</div>';
+    }
+
+    /**
+     * Render the content summary: a definition list of label => value rows.
+     * Uses get_preview_summary() when a subclass curates one; otherwise
+     * auto-summarizes the block's ACF fields via get_field_objects(),
+     * skipping empty values and field types summarize_field() doesn't
+     * support. Falls back to a muted hint when there is nothing to show.
+     *
+     * @param array<string, mixed> $block
+     */
+    protected function render_preview_summary(array $block): void
+    {
+        $rows   = [];
+        $custom = $this->get_preview_summary($block);
+
+        if (is_array($custom)) {
+            $rows = $custom;
+        } elseif (function_exists('get_field_objects')) {
+            $fields = get_field_objects();
+            if (is_array($fields)) {
+                foreach ($fields as $field) {
+                    $value = $this->summarize_field($field);
+                    if ($value !== null) {
+                        $rows[(string) $field['label']] = $value;
+                    }
+                }
+            }
+        }
+
+        if ($rows === []) {
+            echo '<p class="perimetre-block-preview__hint">'
+                . esc_html__('No content yet — add content in the Block panel →', 'perimetre-core')
+                . '</p>';
+            return;
+        }
+
+        echo '<dl class="perimetre-block-preview__fields">';
+        foreach ($rows as $label => $value) {
+            echo '<dt>' . esc_html((string) $label) . '</dt>';
+            echo '<dd>' . $value . '</dd>';
+        }
+        echo '</dl>';
+    }
+
+    /**
+     * Summarize a single ACF field object for the preview card. Handles the
+     * common field types and returns null for everything else (and for empty
+     * values) so unsupported/unfilled fields are omitted. The returned string
+     * may contain HTML (e.g. an image thumbnail); text values are escaped here.
+     *
+     * @param array<string, mixed> $field
+     */
+    protected function summarize_field(array $field): ?string
+    {
+        $type  = (string) ($field['type'] ?? '');
+        $value = $field['value'] ?? null;
+
+        // true_false is always shown (a false value is meaningful), so it is
+        // resolved before the empty-value guard below.
+        if ($type === 'true_false') {
+            return $value
+                ? esc_html__('Yes', 'perimetre-core')
+                : esc_html__('No', 'perimetre-core');
+        }
+
+        if ($value === null || $value === '' || $value === [] || $value === false) {
+            return null;
+        }
+
+        switch ($type) {
+            case 'text':
+            case 'textarea':
+            case 'email':
+            case 'url':
+            case 'number':
+            case 'range':
+                return esc_html($this->truncate((string) $value));
+
+            case 'wysiwyg':
+                return esc_html($this->truncate(wp_strip_all_tags((string) $value)));
+
+            case 'select':
+            case 'radio':
+            case 'button_group':
+                $items = is_array($value) ? $value : [$value];
+                $parts = [];
+                foreach ($items as $item) {
+                    // return_format 'array' yields ['label' => .., 'value' => ..] entries.
+                    $parts[] = is_array($item)
+                        ? (string) ($item['label'] ?? $item['value'] ?? '')
+                        : (string) $item;
+                }
+                $parts = array_filter($parts, static fn(string $p): bool => $p !== '');
+                return $parts === [] ? null : esc_html($this->truncate(implode(', ', $parts)));
+
+            case 'image':
+                return $this->summarize_image($value);
+
+            case 'link':
+                if (is_array($value)) {
+                    $label = $value['title'] ?? ($value['url'] ?? '');
+                    return $label === '' ? null : esc_html($this->truncate((string) $label));
+                }
+                return esc_html($this->truncate((string) $value));
+
+            case 'repeater':
+            case 'relationship':
+                if (is_array($value)) {
+                    $count = count($value);
+                    /* translators: %d: number of items. */
+                    return esc_html(sprintf(_n('%d item', '%d items', $count, 'perimetre-core'), $count));
+                }
+                return null;
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Render a small thumbnail for an image field value, handling ACF's three
+     * return formats: array (sizes['thumbnail'] or ID), attachment ID, or URL.
+     *
+     * @param mixed $value
+     */
+    protected function summarize_image($value): ?string
+    {
+        if (is_array($value)) {
+            $url = $value['sizes']['thumbnail'] ?? ($value['url'] ?? '');
+            if ($url === '' && isset($value['ID'])) {
+                return $this->summarize_image((int) $value['ID']);
+            }
+            $alt = (string) ($value['alt'] ?? '');
+            return $url === '' ? null : $this->image_tag((string) $url, $alt);
+        }
+
+        if (is_numeric($value)) {
+            $tag = wp_get_attachment_image((int) $value, 'thumbnail', false, [
+                'class' => 'perimetre-block-preview__thumb',
+            ]);
+            return $tag === '' ? null : $tag;
+        }
+
+        if (is_string($value) && $value !== '') {
+            return $this->image_tag($value, '');
+        }
+
+        return null;
+    }
+
+    /**
+     * Build an escaped <img> tag for the preview thumbnail.
+     */
+    private function image_tag(string $url, string $alt): string
+    {
+        return '<img class="perimetre-block-preview__thumb" src="' . esc_url($url)
+            . '" alt="' . esc_attr($alt) . '" />';
+    }
+
+    /**
+     * Truncate a plain-text summary value to keep the preview card compact.
+     */
+    private function truncate(string $value, int $length = 80): string
+    {
+        $value = trim($value);
+        if (function_exists('mb_strimwidth')) {
+            return mb_strimwidth($value, 0, $length, '…');
+        }
+        return strlen($value) > $length ? substr($value, 0, $length - 1) . '…' : $value;
     }
 
     /**

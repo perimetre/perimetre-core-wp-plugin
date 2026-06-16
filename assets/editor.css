@@ -3,10 +3,81 @@
  *
  * Loaded via enqueue_block_editor_assets in perimetre-core.php. Scoped
  * to the .perimetre-block-preview wrapper that AcfBlock::render() emits,
- * so these rules only affect ACF blocks that opt into Perimetre's
- * InnerBlocks support — never native Gutenberg blocks elsewhere on the
- * page.
+ * so these rules only affect Perimetre ACF blocks — never native
+ * Gutenberg blocks elsewhere on the page. The base rules style the
+ * content-summary card; the --inner-blocks rules further down apply only
+ * to blocks that opt into Perimetre's InnerBlocks support.
  */
+
+/*
+ * Content-summary card. The default editor preview for every ACF block
+ * (headless sites have no real frontend render to show on canvas): the
+ * block icon + title, then a snapshot of its filled ACF fields. Gives
+ * authors a way to tell blocks apart and confirm their content.
+ */
+.perimetre-block-preview {
+    padding: 0.875rem 1rem;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    color: #1e1e1e;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.perimetre-block-preview__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.perimetre-block-preview__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #757575;
+}
+
+.perimetre-block-preview__icon svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.perimetre-block-preview__fields {
+    display: grid;
+    grid-template-columns: minmax(5rem, max-content) 1fr;
+    gap: 0.25rem 0.75rem;
+    margin: 0.75rem 0 0;
+}
+
+.perimetre-block-preview__fields dt {
+    margin: 0;
+    color: #757575;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.perimetre-block-preview__fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.perimetre-block-preview__thumb {
+    max-height: 48px;
+    width: auto;
+    border-radius: 2px;
+    vertical-align: middle;
+}
+
+.perimetre-block-preview__hint {
+    margin: 0.75rem 0 0;
+    color: #757575;
+    font-style: italic;
+}
 
 /*
  * Force the empty-column appender ("+") to stay visible inside any
