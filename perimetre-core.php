@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Perimetre Core
  * Description: Shared agency plugin for headless WordPress projects.
- * Version: 1.14.1
+ * Version: 1.15.0
  * Author: Perimetre
  * Author URI: https://perimetre.co
  * Requires at least: 6.4

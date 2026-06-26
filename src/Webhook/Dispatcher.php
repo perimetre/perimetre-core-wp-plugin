@@ -125,11 +125,54 @@ final class Dispatcher
             return;
         }
 
+        // ACF options pages aren't GraphQL "nodes", so WPGraphQL Smart Cache's
+        // node-based invalidation never purges queries that read option values
+        // (global nav CTAs, site-wide settings, …). Purge here so a headless
+        // frontend revalidating on this `options.saved` webhook re-fetches
+        // fresh data instead of a stale Smart Cache response.
+        self::purge_graphql_cache($page_slug);
+
         self::dispatch([
             'event'        => 'options.saved',
             'options_page' => $page_slug,
             'timestamp'    => time(),
         ]);
+    }
+
+    /**
+     * Purge the WPGraphQL object/network cache after an ACF options-page save.
+     *
+     * WPGraphQL Smart Cache invalidates by content "node" (post / term / menu).
+     * ACF options pages have no node, so any cached GraphQL response that reads
+     * an option value stays stale until the cache TTL lapses — which makes
+     * site-wide option edits (e.g. nav CTAs) look "stuck" on the headless
+     * frontend even after the revalidation webhook fires. Firing the plugin's
+     * documented purge-all hook clears those entries.
+     *
+     * No-op when WPGraphQL Smart Cache isn't installed (the action is
+     * unregistered), so this stays safe on standard WP sites.
+     *
+     * @param string $page_slug The ACF options page slug that was saved.
+     */
+    private static function purge_graphql_cache(string $page_slug): void
+    {
+        /**
+         * Filters whether saving an ACF options page purges the entire
+         * WPGraphQL cache. Default true. Return false to opt out, or to wire a
+         * more targeted purge for a specific options page.
+         *
+         * @param bool   $purge     Whether to purge the GraphQL cache.
+         * @param string $page_slug The ACF options page slug being saved.
+         */
+        if (! apply_filters('perimetre_core_purge_graphql_cache_on_options', true, $page_slug)) {
+            return;
+        }
+
+        if (! has_action('wpgraphql_cache_purge_all')) {
+            return;
+        }
+
+        do_action('wpgraphql_cache_purge_all');
     }
 
     /**
