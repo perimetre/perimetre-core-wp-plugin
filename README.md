@@ -621,13 +621,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.14.1**
+**1.15.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 1.15.0
+
+- **Purge the WPGraphQL cache when an ACF options page is saved.** WPGraphQL Smart Cache invalidates by content "node" (post/term/menu), but ACF options pages have no node — so cached GraphQL responses that read option values (global nav CTAs, site-wide settings, …) stayed stale until the cache TTL lapsed, making option edits look "stuck" on the headless frontend even after the `options.saved` revalidation webhook fired. `Webhook\Dispatcher::on_options_save()` now fires `do_action('wpgraphql_cache_purge_all')` before dispatching the webhook, so the frontend's post-webhook re-fetch reads fresh data. No-op when WPGraphQL Smart Cache isn't installed (safe on standard WP sites); opt out or customize via the `perimetre_core_purge_graphql_cache_on_options` filter. Note: this clears the object-cache layer — `?edgeCache=` / Varnish responses remain TTL-only invalidated (see 1.13.0), so keep runtime edge-cache TTLs short where option staleness is user-visible.
 
 ### 1.14.1
 
