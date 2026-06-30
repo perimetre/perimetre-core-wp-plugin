@@ -553,13 +553,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.0.0**
+**2.0.1**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.0.1
+
+- Maintenance release. Bumped the release workflow's `action-gh-release` to v3 (Node 24 runtime). No functional or plugin-code changes.
 
 ### 2.0.0
 
