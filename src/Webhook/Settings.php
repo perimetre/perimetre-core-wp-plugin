@@ -4,23 +4,17 @@ declare(strict_types=1);
 
 namespace Perimetre\Core\Webhook;
 
-use Perimetre\Core\Admin\Tabs;
-
 /**
  * Registers the ACF options sub-page and fields for webhook configuration.
  *
- * The page is the "Webhooks" tab on the Perimetre Core settings surface.
- * The underlying ACF options page lives at
- * `options-general.php?page=acf-options-webhooks` but its menu entry is
- * hidden so the surface appears under a single "Perimetre Core" item.
- * Tab navigation is rendered by `Admin\Tabs` via `all_admin_notices`.
+ * The page is a standalone "Webhooks" entry under Settings, living at
+ * `options-general.php?page=acf-options-webhooks`.
  */
 final class Settings
 {
     public const PAGE_SLUG = 'acf-options-webhooks';
 
     private const FIELD_GROUP_KEY = 'group_perimetre_webhooks';
-    private const SCREEN_ID       = 'settings_page_' . self::PAGE_SLUG;
 
     /** @var array<string, mixed>|null */
     private static ?array $options = null;
@@ -33,10 +27,6 @@ final class Settings
             'acf/load_field/key=field_perimetre_webhook_post_types',
             [self::class, 'populate_post_type_choices']
         );
-        // Late priority so this runs after ACF's own admin_menu callbacks
-        // have registered the sub-page.
-        add_action('admin_menu', [self::class, 'hide_menu_entry'], 999);
-        add_action('all_admin_notices', [self::class, 'render_tab_nav']);
     }
 
     public static function register_options_page(): void
@@ -46,31 +36,12 @@ final class Settings
         }
 
         acf_add_options_sub_page([
-            'page_title'  => __('Perimetre Core', 'perimetre-core'),
-            'menu_title'  => __('Perimetre Core', 'perimetre-core'),
+            'page_title'  => __('Webhooks', 'perimetre-core'),
+            'menu_title'  => __('Webhooks', 'perimetre-core'),
             'menu_slug'   => self::PAGE_SLUG,
             'parent_slug' => 'options-general.php',
             'capability'  => 'manage_options',
         ]);
-    }
-
-    /**
-     * Removes the duplicate "Perimetre Core" entry that ACF would add under
-     * Settings — the Status\Settings page already owns that slot, and the
-     * webhooks page is reached via the Webhooks tab.
-     */
-    public static function hide_menu_entry(): void
-    {
-        remove_submenu_page('options-general.php', self::PAGE_SLUG);
-    }
-
-    public static function render_tab_nav(): void
-    {
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if ($screen === null || $screen->id !== self::SCREEN_ID) {
-            return;
-        }
-        Tabs::render(Tabs::TAB_WEBHOOKS);
     }
 
     public static function register_field_group(): void

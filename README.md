@@ -28,9 +28,9 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 - Provides a central block registry that Project Core uses to register all blocks
 - Provides GraphQL registration utilities that enforce naming conventions
 - Hosts shared blocks that are used across multiple projects (grows over time)
-- Provides a configurable status / health-check endpoint (DB, object cache, cron)
 - Provides configurable outgoing webhooks on post status changes (publish, draft, trash, delete)
-- Provides a Remote Login feature that lets the Helm portal SSO existing WP users in by email
+
+> **Operational features moved out.** The status / health-check endpoint and Helm portal Remote Login were split into a separate plugin, [Perimetre WP Tools](https://github.com/perimetre/perimetre-wp-tools-plugin), so they can be deployed on any site (including standard, non-headless client sites) without the block/GraphQL framework. See the [2.0.0 changelog](#changelog).
 
 What it does **not** do:
 
@@ -44,9 +44,7 @@ What it does **not** do:
 
 Perimetre Core is designed for headless Perimetre projects but is safe to install on any standard WordPress site. The plugin's surface area is opt-in and the defaults don't change anything about a host site:
 
-- **Status endpoint** is off by default. While disabled, no rewrite rule is registered and no scheduled events run — the `/status` slug stays available for the host site to use.
 - **Webhooks** are off by default. The dispatcher doesn't fire until the master toggle is on and a URL is configured.
-- **Remote Login** is off by default. The REST route exists once the plugin is active but rejects every request unless the toggle is on and the portal URL and API key are both set. No matching WP user — no login; no auto-creation.
 - **Block abstracts** (`AcfBlock`, `NativeBlock`) only register blocks the host project explicitly opts into via `Registry::register_block()`. Existing ACF blocks registered the conventional way are untouched.
 - **GraphQL utilities** are no-ops unless WPGraphQL is installed and active.
 - **CTA helpers** are pure functions — they only run when called.
@@ -119,20 +117,8 @@ perimetre-core/
 │   │   └── Shared/             Shared blocks used across projects. Empty initially.
 │   ├── GraphQL/
 │   │   └── Registry.php        GraphQL registration utilities. Enforces naming conventions.
-│   ├── Admin/
-│   │   └── Tabs.php            Shared tab strip for the Settings > Perimetre Core surface.
-│   ├── Status/
-│   │   ├── Settings.php        Settings page owner + Status tab.
-│   │   ├── Endpoint.php        Rewrite rule, request handling, cron scheduling.
-│   │   └── HealthChecks.php    DB, cache, and cron health checks.
-│   ├── RemoteLogin/
-│   │   ├── Settings.php        Remote Login tab + auto-handshake on save.
-│   │   ├── Endpoint.php        WP REST route the portal redirects users to.
-│   │   ├── Auth.php            Verify token, consume jti at portal, set auth cookie.
-│   │   ├── Connect.php         Site-handshake POST to the portal.
-│   │   └── Token.php           HMAC-SHA256 token verification.
 │   └── Webhook/
-│       ├── Settings.php        Webhooks tab (ACF-backed) + menu-entry hiding.
+│       ├── Settings.php        Webhooks options page (ACF-backed).
 │       └── Dispatcher.php      Post status hooks and outgoing HTTP dispatch.
 ├── languages/
 │   ├── perimetre-core.pot      Translation template.
@@ -153,15 +139,6 @@ Perimetre\Core\Blocks\Registry        →  src/Blocks/Registry.php
 Perimetre\Core\Blocks\AcfBlock        →  src/Blocks/AcfBlock.php
 Perimetre\Core\Blocks\NativeBlock     →  src/Blocks/NativeBlock.php
 Perimetre\Core\GraphQL\Registry       →  src/GraphQL/Registry.php
-Perimetre\Core\Admin\Tabs             →  src/Admin/Tabs.php
-Perimetre\Core\Status\Settings        →  src/Status/Settings.php
-Perimetre\Core\Status\Endpoint        →  src/Status/Endpoint.php
-Perimetre\Core\Status\HealthChecks    →  src/Status/HealthChecks.php
-Perimetre\Core\RemoteLogin\Settings   →  src/RemoteLogin/Settings.php
-Perimetre\Core\RemoteLogin\Endpoint   →  src/RemoteLogin/Endpoint.php
-Perimetre\Core\RemoteLogin\Auth       →  src/RemoteLogin/Auth.php
-Perimetre\Core\RemoteLogin\Connect    →  src/RemoteLogin/Connect.php
-Perimetre\Core\RemoteLogin\Token      →  src/RemoteLogin/Token.php
 Perimetre\Core\Webhook\Settings       →  src/Webhook/Settings.php
 Perimetre\Core\Webhook\Dispatcher     →  src/Webhook/Dispatcher.php
 ```
@@ -457,54 +434,9 @@ if ($ctas) : ?>
 
 ---
 
-## Status Endpoint
-
-Perimetre Core includes a configurable health-check endpoint. Configure it under **Settings → Perimetre Core**.
-
-The endpoint is off by default and registers no rewrite rule, query var, or scheduled event until enabled — safe to install on a site that already uses the `/status` slug for something else.
-
-| Setting | Default | Description |
-|---|---|---|
-| Status enabled | Off | Enables the endpoint. While off, no rewrite rule is registered and the URL falls through to a regular 404. |
-| Status slug | `status` | The URL path (e.g. `https://example.com/status`). |
-| Secret token | Auto-generated | Required for the full health payload. |
-
-### Responses
-
-**Without token** (or wrong token) — `GET /status`:
-
-```json
-{ "status": "ok" }
-```
-
-**With valid token** — `GET /status?token=xxx`:
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-04-02T12:00:00Z",
-  "db": "ok",
-  "cache": "ok",
-  "wp_version": "6.7",
-  "php_version": "8.3.0",
-  "plugin_version": "1.9.0"
-}
-```
-
-If any check fails, `status` becomes `"error"`, a `"failing"` array lists the failing checks, and the response returns HTTP 500.
-
-### Health checks
-
-| Check | Method |
-|---|---|
-| `db` | `$wpdb->check_connection()` |
-| `cache` | `wp_using_ext_object_cache()` + set/get probe. Returns `"disabled"` when no external cache is active. |
-
----
-
 ## Webhooks
 
-Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings → Perimetre Core**, on the **Webhooks** tab (requires ACF Pro).
+Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings → Webhooks** (requires ACF Pro).
 
 Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `revalidateTag`), but the dispatch mechanism is generic — any HTTP-receiving consumer (sync jobs, automation tools, third-party integrations) can be the target. The master toggle is off by default; nothing fires until it's enabled and at least one URL is configured. Each watched event is dispatched to every configured URL.
 
@@ -621,13 +553,19 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**1.15.0**
+**2.0.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.0.0
+
+- **Split the operational features into a separate plugin.** The status / health-check endpoint (`Status\*`) and Helm portal Remote Login (`RemoteLogin\*`), along with the shared `Admin\Tabs` strip, moved to [Perimetre WP Tools](https://github.com/perimetre/perimetre-wp-tools-plugin). Core now carries only the dev framework — block registration, GraphQL conventions, and webhooks — for custom headless builds. WP Tools is ACF- and WPGraphQL-free and can be deployed on any site, including standard non-headless client sites. The two plugins are independent and can be installed side by side; option keys are unchanged, so existing Status/Remote Login settings carry over automatically. **Note:** the Remote Login REST namespace changed from `perimetre-core/v1` to `perimetre-wp-tools/v1` — see the WP Tools changelog for the portal-coordination requirement.
+- **Webhooks is now a standalone page** at **Settings → Webhooks** (it previously appeared as a tab on the unified Perimetre Core surface). The ACF option keys are unchanged, so existing webhook configuration is preserved.
+- Fixed the long-standing mismatch between the plugin header version and the `PERIMETRE_CORE_VERSION` constant.
 
 ### 1.15.0
 

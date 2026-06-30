@@ -26,21 +26,12 @@ class ComposerStaticInitb113275a202d8e3b5c32f974a7436223
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
-        'Perimetre\\Core\\Admin\\Tabs' => __DIR__ . '/../..' . '/src/Admin/Tabs.php',
         'Perimetre\\Core\\Blocks\\AcfBlock' => __DIR__ . '/../..' . '/src/Blocks/AcfBlock.php',
         'Perimetre\\Core\\Blocks\\NativeBlock' => __DIR__ . '/../..' . '/src/Blocks/NativeBlock.php',
         'Perimetre\\Core\\Blocks\\Registry' => __DIR__ . '/../..' . '/src/Blocks/Registry.php',
         'Perimetre\\Core\\GraphQL\\CacheControl' => __DIR__ . '/../..' . '/src/GraphQL/CacheControl.php',
         'Perimetre\\Core\\GraphQL\\Registry' => __DIR__ . '/../..' . '/src/GraphQL/Registry.php',
         'Perimetre\\Core\\Plugin' => __DIR__ . '/../..' . '/src/Plugin.php',
-        'Perimetre\\Core\\RemoteLogin\\Auth' => __DIR__ . '/../..' . '/src/RemoteLogin/Auth.php',
-        'Perimetre\\Core\\RemoteLogin\\Connect' => __DIR__ . '/../..' . '/src/RemoteLogin/Connect.php',
-        'Perimetre\\Core\\RemoteLogin\\Endpoint' => __DIR__ . '/../..' . '/src/RemoteLogin/Endpoint.php',
-        'Perimetre\\Core\\RemoteLogin\\Settings' => __DIR__ . '/../..' . '/src/RemoteLogin/Settings.php',
-        'Perimetre\\Core\\RemoteLogin\\Token' => __DIR__ . '/../..' . '/src/RemoteLogin/Token.php',
-        'Perimetre\\Core\\Status\\Endpoint' => __DIR__ . '/../..' . '/src/Status/Endpoint.php',
-        'Perimetre\\Core\\Status\\HealthChecks' => __DIR__ . '/../..' . '/src/Status/HealthChecks.php',
-        'Perimetre\\Core\\Status\\Settings' => __DIR__ . '/../..' . '/src/Status/Settings.php',
         'Perimetre\\Core\\Webhook\\Dispatcher' => __DIR__ . '/../..' . '/src/Webhook/Dispatcher.php',
         'Perimetre\\Core\\Webhook\\Settings' => __DIR__ . '/../..' . '/src/Webhook/Settings.php',
     );
