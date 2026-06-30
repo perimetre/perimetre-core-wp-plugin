@@ -44,7 +44,7 @@ git tag v1.2.0 && git push origin v1.2.0
 
 **`GraphQL\Registry`** — wrappers around WPGraphQL's `register_graphql_field()` and `register_graphql_object_type()` that enforce naming conventions at registration time (camelCase fields, PascalCase types). Violations trigger `_doing_it_wrong()` and block registration.
 
-**`Webhook\Settings`** — registers an ACF options sub-page (`options-general.php?page=acf-options-webhooks`), surfaced as a standalone **Settings > Webhooks** menu entry, with fields for enable toggle, a repeater of URLs (`get_urls()` returns a `list<string>`, with a backward-compat fallback to the legacy single `options_perimetre_webhook_url` option), shared secret token, watched post types, watched events, and request timeout. Provides cached static accessors for all settings.
+**`Webhook\Settings`** — registers an ACF options sub-page (`options-general.php?page=acf-options-webhooks`), surfaced as the single **Settings > Perimetre Core** menu entry (Core's only admin surface; can host a tab strip if Core gains more settings), with fields for enable toggle, a repeater of URLs (`get_urls()` returns a `list<string>`, with a backward-compat fallback to the legacy single `options_perimetre_webhook_url` option), shared secret token, watched post types, watched events, and request timeout. Provides cached static accessors for all settings.
 
 **`Webhook\Dispatcher`** — hooks `transition_post_status` and `before_delete_post`. Maps WordPress statuses to event keys, filters by watched post types/events, and fires non-blocking `wp_remote_post` calls (one per configured URL) with Bearer auth and a JSON payload.
 

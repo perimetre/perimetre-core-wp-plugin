@@ -436,7 +436,7 @@ if ($ctas) : ?>
 
 ## Webhooks
 
-Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings → Webhooks** (requires ACF Pro).
+Perimetre Core can fire outgoing HTTP POST requests when posts change status. Configure it under **Settings → Perimetre Core** (requires ACF Pro).
 
 Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `revalidateTag`), but the dispatch mechanism is generic — any HTTP-receiving consumer (sync jobs, automation tools, third-party integrations) can be the target. The master toggle is off by default; nothing fires until it's enabled and at least one URL is configured. Each watched event is dispatched to every configured URL.
 
@@ -553,13 +553,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.0.1**
+**2.0.2**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.0.2
+
+- **Webhooks settings are now the single Settings → Perimetre Core entry.** 2.0.0–2.0.1 briefly surfaced them under a separate "Webhooks" menu item; they're now consolidated under one "Perimetre Core" entry (Core's only admin surface). No option-key or behavior changes — purely the menu label/placement.
 
 ### 2.0.1
 
@@ -568,7 +572,7 @@ Update this when bumping the version in `perimetre-core.php`.
 ### 2.0.0
 
 - **Split the operational features into a separate plugin.** The status / health-check endpoint (`Status\*`) and Helm portal Remote Login (`RemoteLogin\*`), along with the shared `Admin\Tabs` strip, moved to [Perimetre WP Tools](https://github.com/perimetre/perimetre-wp-tools-plugin). Core now carries only the dev framework — block registration, GraphQL conventions, and webhooks — for custom headless builds. WP Tools is ACF- and WPGraphQL-free and can be deployed on any site, including standard non-headless client sites. The two plugins are independent and can be installed side by side; option keys are unchanged, so existing Status/Remote Login settings carry over automatically. **Note:** the Remote Login REST namespace changed from `perimetre-core/v1` to `perimetre-wp-tools/v1` — see the WP Tools changelog for the portal-coordination requirement.
-- **Webhooks is now a standalone page** at **Settings → Webhooks** (it previously appeared as a tab on the unified Perimetre Core surface). The ACF option keys are unchanged, so existing webhook configuration is preserved.
+- **Webhooks moved off the unified Status/Remote-Login tab strip** (which was removed with those modules). The ACF option keys are unchanged, so existing webhook configuration is preserved. (See 2.0.2 for its final menu placement.)
 - Fixed the long-standing mismatch between the plugin header version and the `PERIMETRE_CORE_VERSION` constant.
 
 ### 1.15.0

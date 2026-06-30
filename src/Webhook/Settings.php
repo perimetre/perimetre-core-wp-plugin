@@ -7,8 +7,9 @@ namespace Perimetre\Core\Webhook;
 /**
  * Registers the ACF options sub-page and fields for webhook configuration.
  *
- * The page is a standalone "Webhooks" entry under Settings, living at
- * `options-general.php?page=acf-options-webhooks`.
+ * This is the single **Settings > Perimetre Core** entry (Core's only admin
+ * surface), living at `options-general.php?page=acf-options-webhooks`. If Core
+ * grows more settings later, this page can host a tab strip.
  */
 final class Settings
 {
@@ -36,8 +37,8 @@ final class Settings
         }
 
         acf_add_options_sub_page([
-            'page_title'  => __('Webhooks', 'perimetre-core'),
-            'menu_title'  => __('Webhooks', 'perimetre-core'),
+            'page_title'  => __('Perimetre Core', 'perimetre-core'),
+            'menu_title'  => __('Perimetre Core', 'perimetre-core'),
             'menu_slug'   => self::PAGE_SLUG,
             'parent_slug' => 'options-general.php',
             'capability'  => 'manage_options',
