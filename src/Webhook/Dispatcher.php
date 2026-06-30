@@ -31,7 +31,7 @@ final class Dispatcher
         add_action('acf/save_post', [self::class, 'on_options_save'], 20);
         add_action('wp_update_nav_menu', [self::class, 'on_menu_save'], 10);
         add_action('wp_delete_nav_menu', [self::class, 'on_menu_delete'], 10);
-        add_filter('pre_delete_term', [self::class, 'cache_menu_before_delete'], 10, 2);
+        add_action('pre_delete_term', [self::class, 'cache_menu_before_delete'], 10, 2);
     }
 
     public static function on_transition(string $new_status, string $old_status, WP_Post $post): void
@@ -176,18 +176,22 @@ final class Dispatcher
     }
 
     /**
-     * Cache menu data before WordPress deletes the term.
+     * Cache a nav-menu term before WordPress deletes it, so the menu's
+     * name/slug are still available when on_menu_delete dispatches the webhook.
      *
-     * @return mixed Passthrough value for the filter.
+     * Fires on the `pre_delete_term` action, which passes the term ID and
+     * taxonomy slug — guard to `nav_menu` so other taxonomy deletions do no work.
      */
-    public static function cache_menu_before_delete(mixed $passthrough, int $term_id): mixed
+    public static function cache_menu_before_delete(int $term_id, string $taxonomy): void
     {
+        if ($taxonomy !== 'nav_menu') {
+            return;
+        }
+
         $menu = wp_get_nav_menu_object($term_id);
         if ($menu) {
             self::$menu_cache[$term_id] = $menu;
         }
-
-        return $passthrough;
     }
 
     public static function on_menu_save(int $menu_id): void

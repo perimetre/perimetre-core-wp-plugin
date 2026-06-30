@@ -553,13 +553,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.0.2**
+**2.0.3**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.0.3
+
+- **Fixed a fatal `TypeError` that blocked deleting any taxonomy term** (Product Categories, tags, categories, …). `Webhook\Dispatcher::cache_menu_before_delete()` runs on the `pre_delete_term` action, which passes `(int $term_id, string $taxonomy)` — but the callback declared its second argument as `int`, so the taxonomy slug string aborted the request under `declare(strict_types=1)` before the term could be deleted. The bug also defeated its own purpose: it was meant to cache a `nav_menu` term before deletion, but fataled before caching. The callback now uses the correct `(int $term_id, string $taxonomy)` signature, is registered as an action (not a filter), and caches only `nav_menu` terms.
 
 ### 2.0.2
 
