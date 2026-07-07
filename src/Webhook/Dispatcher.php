@@ -110,13 +110,8 @@ final class Dispatcher
             return;
         }
 
-        if (! function_exists('acf_get_current_screen')) {
-            return;
-        }
-
-        $screen = acf_get_current_screen();
-        $page_slug = $screen['id'] ?? null;
-        if (! is_string($page_slug) || $page_slug === '') {
+        $page_slug = self::current_options_page_slug();
+        if ($page_slug === null || $page_slug === '') {
             return;
         }
 
@@ -137,6 +132,42 @@ final class Dispatcher
             'options_page' => $page_slug,
             'timestamp'    => time(),
         ]);
+    }
+
+    /**
+     * Resolve the ACF options-page menu slug being saved.
+     *
+     * `acf/save_post` fires for options pages with `$post_id === 'options'` but
+     * doesn't identify WHICH page was saved. ACF options pages POST to their own
+     * admin URL (`?page={menu_slug}`), so read the slug from the request and
+     * validate it against the registered options pages — that also rejects any
+     * unrelated `?page=` admin screen. (There is no `acf_get_current_screen()`
+     * function in ACF; WordPress's `get_current_screen()->id` would return a
+     * prefixed screen id like `settings_page_{slug}`, not the clean menu slug.)
+     *
+     * @return string|null The options-page menu slug, or null if this isn't a
+     *                      recognised ACF options-page save.
+     */
+    private static function current_options_page_slug(): ?string
+    {
+        $page = isset($_REQUEST['page'])
+            ? sanitize_key(wp_unslash($_REQUEST['page']))
+            : '';
+        if ($page === '') {
+            return null;
+        }
+
+        if (function_exists('acf_get_options_pages')) {
+            foreach ((array) acf_get_options_pages() as $options_page) {
+                if (($options_page['menu_slug'] ?? null) === $page) {
+                    return $page;
+                }
+            }
+
+            return null;
+        }
+
+        return $page;
     }
 
     /**
