@@ -287,26 +287,72 @@ final class Settings
             return self::$options;
         }
 
-        $post_types = get_field('perimetre_webhook_post_types', 'option');
-        if (empty($post_types) || ! is_array($post_types)) {
-            $post_types = array_keys(self::get_watchable_post_types());
-        }
+        // Read all settings under WPML's default language. Webhook config is a
+        // single site-wide setting, but ACF options are served per-language
+        // under WPML, so values entered in the default language are not returned
+        // while WordPress is in another language context (e.g. saving a French
+        // post) and the webhook silently never fires for non-default languages.
+        $restore = self::force_default_language();
 
-        $events = get_field('perimetre_webhook_events', 'option');
-        if (empty($events) || ! is_array($events)) {
-            $events = [];
-        }
+        try {
+            $post_types = get_field('perimetre_webhook_post_types', 'option');
+            if (empty($post_types) || ! is_array($post_types)) {
+                $post_types = array_keys(self::get_watchable_post_types());
+            }
 
-        self::$options = [
-            'enabled'    => (bool) get_field('perimetre_webhook_enabled', 'option'),
-            'urls'       => self::read_urls(),
-            'secret'     => (string) (get_field('perimetre_webhook_secret', 'option') ?? ''),
-            'post_types' => $post_types,
-            'events'     => $events,
-            'timeout'    => (int) (get_field('perimetre_webhook_timeout', 'option') ?: 5),
-        ];
+            $events = get_field('perimetre_webhook_events', 'option');
+            if (empty($events) || ! is_array($events)) {
+                $events = [];
+            }
+
+            self::$options = [
+                'enabled'    => (bool) get_field('perimetre_webhook_enabled', 'option'),
+                'urls'       => self::read_urls(),
+                'secret'     => (string) (get_field('perimetre_webhook_secret', 'option') ?? ''),
+                'post_types' => $post_types,
+                'events'     => $events,
+                'timeout'    => (int) (get_field('perimetre_webhook_timeout', 'option') ?: 5),
+            ];
+        } finally {
+            if ($restore !== null) {
+                do_action('wpml_switch_language', $restore);
+            }
+        }
 
         return self::$options;
+    }
+
+    /**
+     * Switch to WPML's default language for the duration of a settings read.
+     *
+     * Webhook config is a single site-wide setting, but ACF options are served
+     * per-language under WPML — a value entered in the default language is not
+     * returned at runtime while WordPress is in another language context (e.g.
+     * saving a French post), so the webhook silently never fires for
+     * non-default languages. Reading settings from the default language fixes
+     * that with a single configuration.
+     *
+     * Only the settings read is affected; the payload's `language` is derived
+     * separately from the saved post and must be restored before dispatch.
+     *
+     * @return string|null Previous language to restore, or null if no switch happened.
+     */
+    private static function force_default_language(): ?string
+    {
+        if (! has_filter('wpml_current_language')) {
+            return null; // WPML inactive — nothing to do.
+        }
+
+        $current = apply_filters('wpml_current_language', null);
+        $default = apply_filters('wpml_default_language', null);
+
+        if (! is_string($default) || $default === '' || $current === $default) {
+            return null;
+        }
+
+        do_action('wpml_switch_language', $default);
+
+        return is_string($current) ? $current : null;
     }
 
     /**

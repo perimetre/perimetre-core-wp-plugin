@@ -553,13 +553,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.0.3**
+**2.0.4**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.0.4
+
+- **Fix the webhook silently never firing for non-default-language content under WPML.** On a WPML site, saving a post in a secondary language (e.g. French on an `en`/`fr` site) never dispatched the webhook, while the default language worked fine. Webhook config lives on an ACF options page, and ACF options — including the URL repeater and enable toggle — are served **per-language at runtime**, so reading them while WordPress is in a non-default language context returned an empty/disabled config even though the settings page displayed the correct values. `Webhook\Settings::get_settings()` now reads all options under WPML's **default** language (via the new `wpml_default_language`-based `force_default_language()` helper, restored in a `finally`), so a single configuration fires for every language. The payload's `language` field is unaffected — it is still derived from the saved post via `wpml_post_language_details`, so receivers continue to get `language: "fr"` for French saves. No-op when WPML is inactive.
 
 ### 2.0.3
 
