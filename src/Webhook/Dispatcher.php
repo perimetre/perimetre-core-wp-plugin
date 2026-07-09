@@ -98,7 +98,14 @@ final class Dispatcher
      */
     public static function on_options_save(mixed $post_id): void
     {
-        if ($post_id !== 'options') {
+        // ACF appends the WPML language code to the options post id on
+        // non-default languages (`options` -> `options_fr`) — both in core
+        // (`acf_get_valid_post_id()`) and via project MultilingualOptions
+        // filters on `acf/validate_post_id`. `acf/save_post` therefore fires
+        // with the localized id, so a strict `!== 'options'` check silently
+        // drops every non-default-language options save and the webhook never
+        // fires for them. Accept the bare id and any `options_<lang>` variant.
+        if (! is_string($post_id) || ($post_id !== 'options' && ! str_starts_with($post_id, 'options_'))) {
             return;
         }
 
