@@ -1,7 +1,8 @@
 /*
  * Perimetre Core — block editor styles.
  *
- * Loaded via enqueue_block_editor_assets in perimetre-core.php. Scoped
+ * Loaded via enqueue_block_assets in perimetre-core.php (the hook whose
+ * styles reach the iframed editor canvas), admin-only. Scoped
  * to the .perimetre-block-preview wrapper that AcfBlock::render() emits,
  * so these rules only affect Perimetre ACF blocks — never native
  * Gutenberg blocks elsewhere on the page. The base rules style the
@@ -16,28 +17,62 @@
  * authors a way to tell blocks apart and confirm their content.
  */
 .perimetre-block-preview {
-    padding: 0.875rem 1rem;
+    /*
+     * The card is editor chrome, not content, so it is set in the WordPress
+     * admin UI font rather than inheriting the canvas font — without a
+     * font-family it falls back to the browser default (serif) on headless
+     * projects, whose themes ship no editor styles for the iframe.
+     *
+     * Held as a custom property and applied only to the card's own parts,
+     * never to the wrapper: an InnerBlocks slot renders real author content
+     * as a sibling of this card, and that content must keep looking like
+     * content, not like admin UI.
+     */
+    --perimetre-preview-font:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans,
+        Ubuntu, Cantarell, "Helvetica Neue", sans-serif, "Apple Color Emoji",
+        "Segoe UI Emoji", "Segoe UI Symbol";
+    padding: 0.875rem 1rem 1rem;
     background: #fff;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
+    border: 1px solid #e2e4e7;
+    border-radius: 6px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     color: #1e1e1e;
     font-size: 0.8125rem;
     line-height: 1.5;
 }
 
+.perimetre-block-preview__head,
+.perimetre-block-preview__fields,
+.perimetre-block-preview__hint,
+.perimetre-block-preview__notice {
+    font-family: var(--perimetre-preview-font);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Head row: block icon + title, separated from the field snapshot by a
+ * hairline so the card reads as label-then-content instead of one flat
+ * list. The rule is inset to the card padding on purpose (full-bleed
+ * would need negative margins and fight the border radius).
+ */
 .perimetre-block-preview__head {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    padding-bottom: 0.625rem;
+    border-bottom: 1px solid #f0f0f0;
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+    letter-spacing: -0.003em;
 }
 
 .perimetre-block-preview__icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #757575;
+    color: #949494;
 }
 
 .perimetre-block-preview__icon svg {
@@ -48,34 +83,47 @@
 
 .perimetre-block-preview__fields {
     display: grid;
-    grid-template-columns: minmax(5rem, max-content) 1fr;
-    gap: 0.25rem 0.75rem;
+    grid-template-columns: minmax(4.5rem, max-content) 1fr;
+    gap: 0.4375rem 1rem;
     margin: 0.75rem 0 0;
 }
 
+/*
+ * Labels are set as small caps-style micro-type: uppercase at 11px needs
+ * real tracking to stay readable, and a lighter weight against a lighter
+ * grey keeps them from competing with the values they describe. The
+ * baseline nudge optically aligns them with the 13px value beside them.
+ */
 .perimetre-block-preview__fields dt {
     margin: 0;
-    color: #757575;
-    font-size: 0.75rem;
+    padding-top: 0.0625rem;
+    color: #949494;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.45;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.055em;
 }
 
 .perimetre-block-preview__fields dd {
     margin: 0;
+    color: #1e1e1e;
+    /* Keeps "3 items" / "12 items" counts from jittering column to column. */
+    font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
 }
 
 .perimetre-block-preview__thumb {
     max-height: 48px;
     width: auto;
-    border-radius: 2px;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
     vertical-align: middle;
 }
 
 .perimetre-block-preview__hint {
     margin: 0.75rem 0 0;
-    color: #757575;
+    color: #949494;
     font-style: italic;
 }
 
@@ -125,12 +173,12 @@
  * keeps that surface discoverable inside the canvas.
  */
 .perimetre-block-preview__notice {
-    margin: 0 0 0.75rem;
+    margin: 0.75rem 0;
     padding: 0.625rem 0.875rem;
     background: #fef3c7;
     color: #78350f;
     border-left: 3px solid #f59e0b;
-    border-radius: 2px;
+    border-radius: 3px;
     font-size: 0.8125rem;
     line-height: 1.4;
 }

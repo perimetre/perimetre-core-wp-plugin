@@ -553,13 +553,26 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.0.4**
+**2.0.7**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.0.7
+
+- **Fixed the block editor warning `perimetre-core-editor-css was added to the iframe incorrectly. Please use block.json or enqueue_block_assets to add styles to the iframe.`** `assets/editor.css` was enqueued on `enqueue_block_editor_assets`, which targets the document *around* the editor canvas. Since WP 6.3 the canvas is an iframe, so the editor has to copy those styles in and logs this warning. The stylesheet now hooks `enqueue_block_assets` — the hook whose styles WordPress loads inside the iframe — with an `is_admin()` guard so nothing loads on the front end. Cosmetic-only change: the same rules apply to the same `.perimetre-block-preview` markup, and no project code needs to change.
+- **Typographic polish on the block preview card.** The card never declared a `font-family`, so inside the iframe it fell back to the browser default (serif) — headless themes ship no editor styles for the canvas to inherit. It now uses the WordPress admin UI font, applied only to the card's own parts (via `--perimetre-preview-font`) so real author content in an InnerBlocks slot keeps looking like content. Also: a hairline under the header row, more tracking and a lighter weight on the uppercase field labels, tabular figures on values so `N items` counts don't jitter, a softer border with a 1px shadow, and a hairline frame on image thumbnails.
+
+### 2.0.6
+
+- **Fixed `options.saved` never firing for non-default-language Site Options saves.** ACF appends the WPML language code to the options post id on secondary languages (`options` → `options_fr`), both in core (`acf_get_valid_post_id`) and via project `acf/validate_post_id` filters, so the strict `!== 'options'` guard silently dropped every localized save. The handler now accepts the bare `options` id and any `options_<lang>` variant.
+
+### 2.0.5
+
+- **Fixed `options.saved` never firing for any options page, in any language.** `on_options_save()` gated on `function_exists('acf_get_current_screen')`, but that function does not exist in ACF (verified against ACF Pro 6.8) — the guard was always false, so the handler returned before dispatching. Replaced with `current_options_page_slug()`, which reads the saved page from the request (ACF options pages POST to `?page={menu_slug}`) and validates it against `acf_get_options_pages()`, also rejecting unrelated admin screens. All other guards and the payload's `options_page` slug are unchanged.
 
 ### 2.0.4
 
