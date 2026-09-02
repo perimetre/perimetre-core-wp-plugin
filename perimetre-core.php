@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Perimetre Core
  * Description: Shared agency plugin for headless WordPress projects.
- * Version: 2.0.7
+ * Version: 2.1.0
  * Author: Perimetre
  * Author URI: https://perimetre.co
  * Requires at least: 6.4
@@ -18,7 +18,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('PERIMETRE_CORE_VERSION', '2.0.7');
+define('PERIMETRE_CORE_VERSION', '2.1.0');
 define('PERIMETRE_CORE_FILE', __FILE__);
 define('PERIMETRE_CORE_PATH', plugin_dir_path(__FILE__));
 define('PERIMETRE_CORE_URL', plugin_dir_url(__FILE__));
@@ -29,7 +29,9 @@ require_once PERIMETRE_CORE_PATH . 'src/Acf/cta-fields.php';
 use Perimetre\Core\Blocks\Registry as BlockRegistry;
 use Perimetre\Core\GraphQL\CacheControl as GraphQLCacheControl;
 use Perimetre\Core\GraphQL\Registry as GraphQLRegistry;
+use Perimetre\Core\CLI\SeoExcerptAuditCommand;
 use Perimetre\Core\Plugin;
+use Perimetre\Core\SEO\MetaDescriptionVariable;
 use Perimetre\Core\Webhook\Dispatcher as WebhookDispatcher;
 use Perimetre\Core\Webhook\Settings as WebhookSettings;
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
@@ -84,3 +86,19 @@ WebhookDispatcher::register();
  * hooks coding standard.
  */
 add_action('enqueue_block_assets', [Plugin::class, 'enqueue_editor_assets']);
+
+/**
+ * Register the %%perimetre_excerpt%% Yoast replacement variable, which builds a
+ * meta description out of ACF block and field content Yoast cannot otherwise
+ * read. Inert until a content type's Yoast meta description template
+ * references it; no-ops entirely when Yoast is not installed.
+ */
+MetaDescriptionVariable::register();
+
+/**
+ * Audit tool for the variable above: reports the description each post would
+ * get, and what generating it costs.
+ */
+if (defined('WP_CLI') && WP_CLI) {
+    WP_CLI::add_command('perimetre:seo-excerpt-audit', SeoExcerptAuditCommand::class);
+}

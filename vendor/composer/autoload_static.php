@@ -29,9 +29,11 @@ class ComposerStaticInitb113275a202d8e3b5c32f974a7436223
         'Perimetre\\Core\\Blocks\\AcfBlock' => __DIR__ . '/../..' . '/src/Blocks/AcfBlock.php',
         'Perimetre\\Core\\Blocks\\NativeBlock' => __DIR__ . '/../..' . '/src/Blocks/NativeBlock.php',
         'Perimetre\\Core\\Blocks\\Registry' => __DIR__ . '/../..' . '/src/Blocks/Registry.php',
+        'Perimetre\\Core\\CLI\\SeoExcerptAuditCommand' => __DIR__ . '/../..' . '/src/CLI/SeoExcerptAuditCommand.php',
         'Perimetre\\Core\\GraphQL\\CacheControl' => __DIR__ . '/../..' . '/src/GraphQL/CacheControl.php',
         'Perimetre\\Core\\GraphQL\\Registry' => __DIR__ . '/../..' . '/src/GraphQL/Registry.php',
         'Perimetre\\Core\\Plugin' => __DIR__ . '/../..' . '/src/Plugin.php',
+        'Perimetre\\Core\\SEO\\MetaDescriptionVariable' => __DIR__ . '/../..' . '/src/SEO/MetaDescriptionVariable.php',
         'Perimetre\\Core\\Webhook\\Dispatcher' => __DIR__ . '/../..' . '/src/Webhook/Dispatcher.php',
         'Perimetre\\Core\\Webhook\\Settings' => __DIR__ . '/../..' . '/src/Webhook/Settings.php',
     );
