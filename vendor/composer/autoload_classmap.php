@@ -10,9 +10,11 @@ return array(
     'Perimetre\\Core\\Blocks\\AcfBlock' => $baseDir . '/src/Blocks/AcfBlock.php',
     'Perimetre\\Core\\Blocks\\NativeBlock' => $baseDir . '/src/Blocks/NativeBlock.php',
     'Perimetre\\Core\\Blocks\\Registry' => $baseDir . '/src/Blocks/Registry.php',
+    'Perimetre\\Core\\CLI\\SeoExcerptAuditCommand' => $baseDir . '/src/CLI/SeoExcerptAuditCommand.php',
     'Perimetre\\Core\\GraphQL\\CacheControl' => $baseDir . '/src/GraphQL/CacheControl.php',
     'Perimetre\\Core\\GraphQL\\Registry' => $baseDir . '/src/GraphQL/Registry.php',
     'Perimetre\\Core\\Plugin' => $baseDir . '/src/Plugin.php',
+    'Perimetre\\Core\\SEO\\MetaDescriptionVariable' => $baseDir . '/src/SEO/MetaDescriptionVariable.php',
     'Perimetre\\Core\\Webhook\\Dispatcher' => $baseDir . '/src/Webhook/Dispatcher.php',
     'Perimetre\\Core\\Webhook\\Settings' => $baseDir . '/src/Webhook/Settings.php',
 );

@@ -516,6 +516,50 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
 
 ---
 
+## SEO — Meta Descriptions from ACF Content
+
+Yoast cannot see ACF. Its `%%excerpt%%` variable falls back to `post_content` when the excerpt is empty, and on an ACF-block page `post_content` holds only the block delimiter comments — which `wp_strip_all_tags()` removes, leaving nothing. Classic-editor CPTs whose text lives in ACF postmeta have the same problem from the other side. Either way, posts without a hand-written meta description ship without one.
+
+Core registers **`%%perimetre_excerpt%%`**, which reads the prose out of wherever ACF actually put it: it walks the block tree (or the post's ACF fields), keeps the `text` / `textarea` / `wysiwyg` values in reading order, and trims the result to meta-description length.
+
+### Setup — one step per content type
+
+In **SEO → Settings → Content types → \<type\> → Meta description**, set the template to `%%perimetre_excerpt%%`.
+
+Nothing happens until you do — a registered variable is inert until a template references it. Yoast is not a Core dependency; without it the whole feature no-ops.
+
+### What it guarantees
+
+- **A description an editor typed always wins.** Yoast only consults the type's template when the post's own meta description is empty.
+- **It is a superset of `%%excerpt%%`**, never worse. Content ACF never touched (core blocks, Classic-editor HTML) falls back to the same text the built-in variable would have produced. This matters because a Yoast template *concatenates* its variables rather than picking the first non-empty one — a template cannot express a fallback, so the variable has to. Safe as a template's sole value.
+- **Nothing is stored.** The value is computed when Yoast resolves a description and discarded. It tracks the content with no save hook and no staleness, applies to existing content with no backfill, and never writes — so it cannot fire a second `transition_post_status` and double-trigger a frontend rebuild.
+- **Cost is flat**, 0.02–0.26 ms per post. `parse_blocks()` duplicates a parse the same GraphQL request already performs for `editorBlocks`; ACF field types resolve through a request-static map (important, because ACFML filters `acf/load_field`); the postmeta path avoids `get_fields()` and the `acf/format_value` queries it triggers; and collection stops once there is enough text.
+
+### It does not replace `%%cf_<field>%%`
+
+Yoast's built-in custom-field variable reads flat postmeta directly, so for a post type with one field that always describes it, `%%cf_hero_description%%` is the better template — deterministic, and no sweep to reason about. `%%perimetre_excerpt%%` is for what that cannot cover: ACF **block** content, which lives as JSON in `post_content` and is unreachable from postmeta, and post types with no single obvious field. Pick per content type; they coexist.
+
+### Auditing a project
+
+Before wiring the variable into a template on a project, see what it would produce there. Every project's field groups are its own, and this calls the resolver directly — no configuration needed, nothing written:
+
+```bash
+wp perimetre:seo-excerpt-audit --post_type=page
+wp perimetre:seo-excerpt-audit --post_type=product --limit=50
+wp perimetre:seo-excerpt-audit --post_type=page --empty          # only posts producing nothing
+wp perimetre:seo-excerpt-audit --post_type=page --timings-only   # cost, without the text
+```
+
+### Filters
+
+| Filter | Default | Purpose |
+|---|---|---|
+| `perimetre_core_seo_excerpt_field_types` | `['text', 'textarea', 'wysiwyg']` | Which ACF field types count as prose |
+| `perimetre_core_seo_excerpt_max_length` | `156` (`80` for `ja`) | Character budget, mirroring Yoast's own |
+| `perimetre_core_seo_excerpt_excluded_blocks` | `[]` | Block names to skip, e.g. `acf/project-bestsellers` |
+
+---
+
 ## Naming Conventions
 
 | Concept | Convention | Example |
@@ -553,13 +597,18 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.0.7**
+**2.1.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.1.0
+
+- **Added `%%perimetre_excerpt%%`, a Yoast replacement variable that builds a meta description from ACF block and field content.** Yoast cannot read ACF: `%%excerpt%%` falls back to `post_content`, which on an ACF-block page is only block delimiter comments that `wp_strip_all_tags()` removes — so those pages shipped with no meta description at all. The new variable walks the block tree (and ACF postmeta for Classic-editor types), keeps `text` / `textarea` / `wysiwyg` values in reading order, and trims to Yoast's own 156-character budget. It is a superset of `%%excerpt%%` — core blocks and Classic HTML fall back to the same text the built-in produces — so it is safe as a template's sole value. Nothing is stored: no save hook, no staleness, no backfill, and no extra `transition_post_status` to double-trigger a frontend rebuild. A hand-written description always wins. Opt in per content type at **SEO → Settings → Content types → \<type\> → Meta description**; inert until you do, and a no-op when Yoast is absent. See [SEO — Meta Descriptions from ACF Content](#seo--meta-descriptions-from-acf-content).
+- **Added `wp perimetre:seo-excerpt-audit`.** Reports the description each post of a type would get and what generating it costs, calling the resolver directly so nothing has to be configured first. Run it when adopting the variable on a project — the block walker follows ACF's documented storage shape, but every project's field groups are its own.
 
 ### 2.0.7
 
