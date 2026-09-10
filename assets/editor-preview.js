@@ -93,6 +93,14 @@
 
       function autosaveIfNeeded() {
         var editor = wp.data.select('core/editor');
+        // A post that has never been saved is an `auto-draft` WordPress
+        // created when the editor was opened. Autosaving it would turn an
+        // abandoned "Add New" into a real draft behind the user's back, so
+        // leave it alone — the frontend shows its "nothing to preview yet"
+        // state until the author saves the draft themselves.
+        if (editor.isEditedPostNew && editor.isEditedPostNew()) {
+          return;
+        }
         // Nothing to write, or a save is already in flight. `autosave()` is a
         // no-op in both cases, but skipping keeps the intent obvious.
         if (!editor.isEditedPostDirty()) {
