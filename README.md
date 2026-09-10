@@ -611,7 +611,16 @@ Until both 1 and 2 are in place nothing changes: no signed links, no editor pane
 
 ### The editor pane
 
-`Preview\EditorPreviewPane` adds a **Site preview** sidebar to the block editor holding an `<iframe>` of the signed link, widened while open so it reads side-by-side, plus an entry in the Preview dropdown. It reloads itself whenever a save or autosave finishes, so Gutenberg's own autosave is what drives it.
+`Preview\EditorPreviewPane` adds a **Site preview** sidebar to the block editor holding an `<iframe>` of the signed link, widened while open so it reads side-by-side, plus an entry in the Preview dropdown.
+
+**It refreshes when you leave a field or a block**, rather than waiting out Gutenberg's autosave interval. The frontend can only ever render what is in the database — it reads the newest revision — so "refresh the preview" necessarily means "autosave first, then reload". Two listeners cover the entire editor without touching a single block:
+
+- a `core/block-editor` store subscription, which fires when the selected block changes — that *is* "the user left this block", and being store state it works even when the canvas is iframed, where a DOM event would not reach us;
+- one delegated `focusout` on the document (capture), which covers the ACF fields — in Blocks v3 they live in the block sidebar and the slide-out modal, i.e. in this document rather than the canvas iframe.
+
+Both debounce into a single `autosave()` (600ms), skipped when the post is not dirty, already saving, or save-locked by another plugin. This runs only while the pane is open, so an editor who never opens the preview keeps WordPress's stock autosave cadence.
+
+What autosave means per status decides what the preview can show. For a **draft you own**, WordPress writes straight to the post, so the pane shows your edits. For a **published** post it writes a separate autosave revision, which is what the preview reads — the live page is untouched. For a post type with no `revisions` support whose content is post meta (an ACF-only CPT on the Classic editor), there is nothing to autosave and the preview can only ever show the last saved state.
 
 Only block-editor post types get the pane. A CPT registered `show_in_rest => false` uses the Classic editor, where there is nothing to add a sidebar to — its Preview button still opens the signed link in a new tab.
 
