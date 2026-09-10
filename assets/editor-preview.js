@@ -24,6 +24,13 @@
   var Button = wp.components.Button;
   var __ = wp.i18n.__;
 
+  /**
+   * How long to wait after the user leaves a field or a block before forcing an
+   * autosave. Long enough to coalesce tabbing through several fields into one
+   * save, short enough that the pane feels live.
+   */
+  var AUTOSAVE_DEBOUNCE = 600;
+
   var PLUGIN = 'perimetre-core-editor-preview';
   var SIDEBAR = 'frontend-preview';
   var AREA = PLUGIN + '/' + SIDEBAR;
@@ -48,8 +55,8 @@
       };
     }, []);
 
-    // Reload once a save or autosave completes: the frontend's `asPreview`
-    // read returns the newest revision, which is what Gutenberg just wrote.
+    // Reload once a save or autosave completes: the frontend reads the newest
+    // revision, which is what Gutenberg just wrote.
     useEffect(
       function () {
         if (wasSaving.current && !isSaving) {
@@ -59,6 +66,90 @@
       },
       [isSaving]
     );
+
+    // Force an autosave when the user leaves a field or moves off a block, so
+    // the pane tracks edits instead of waiting out Gutenberg's autosave
+    // interval. The frontend can only ever show what has been written to the
+    // database — it reads the newest revision — so "refresh the preview" means
+    // "autosave first, then reload", which the effect above already handles.
+    //
+    // Two listeners cover the whole editor without touching a single block:
+    //
+    //   - a `core/block-editor` store subscription fires when the selected
+    //     block changes, which is what "left this block" means. Works for
+    //     content typed in the canvas even when the canvas is iframed, since
+    //     it is store state, not a DOM event.
+    //   - one delegated `focusout` on the document (capture phase) covers the
+    //     ACF fields, which in Blocks v3 live in the block sidebar and the
+    //     slide-out modal — i.e. in this document, not the canvas iframe.
+    //
+    // Only while the pane is mounted: an editor who never opens the preview
+    // keeps WordPress's stock autosave cadence.
+    useEffect(function () {
+      var timer = null;
+      var lastBlockId = wp.data
+        .select('core/block-editor')
+        .getSelectedBlockClientId();
+
+      function autosaveIfNeeded() {
+        var editor = wp.data.select('core/editor');
+        // Nothing to write, or a save is already in flight. `autosave()` is a
+        // no-op in both cases, but skipping keeps the intent obvious.
+        if (!editor.isEditedPostDirty()) {
+          return;
+        }
+        if (editor.isSavingPost() || editor.isAutosavingPost()) {
+          return;
+        }
+        // Respect a lock some other plugin took out (an incomplete required
+        // field, a media upload in progress).
+        if (editor.isPostSavingLocked && editor.isPostSavingLocked()) {
+          return;
+        }
+        wp.data.dispatch('core/editor').autosave();
+      }
+
+      function schedule() {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        timer = setTimeout(autosaveIfNeeded, AUTOSAVE_DEBOUNCE);
+      }
+
+      var unsubscribe = wp.data.subscribe(function () {
+        var id = wp.data
+          .select('core/block-editor')
+          .getSelectedBlockClientId();
+        if (id !== lastBlockId) {
+          lastBlockId = id;
+          schedule();
+        }
+      });
+
+      function onFocusOut(event) {
+        var target = event.target;
+        if (!target || typeof target.matches !== 'function') {
+          return;
+        }
+        if (
+          target.matches(
+            'input, textarea, select, [contenteditable="true"]'
+          )
+        ) {
+          schedule();
+        }
+      }
+
+      document.addEventListener('focusout', onFocusOut, true);
+
+      return function () {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        unsubscribe();
+        document.removeEventListener('focusout', onFocusOut, true);
+      };
+    }, []);
 
     function reload() {
       if (frame.current) {
