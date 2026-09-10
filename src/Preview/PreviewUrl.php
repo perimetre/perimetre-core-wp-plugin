@@ -132,7 +132,17 @@ final class PreviewUrl
         // its own domain, matching how project permalink templates read.
         $origin = rtrim(strtr(trim($base), ['{locale}' => $locale]), '/');
 
-        $url = add_query_arg($params, $origin . $path);
+        // `add_query_arg()` does not encode the values it is handed, and both
+        // the locale and the origin come from project filters — encode here so
+        // a callback returning a stray `&`, `#` or space cannot corrupt the
+        // query string. (The signed payload itself is safe either way: parsing
+        // it back demands exactly six pipe-delimited parts.)
+        $encoded = array_map(
+            static fn (int|string $value): string => rawurlencode((string) $value),
+            $params
+        );
+
+        $url = add_query_arg($encoded, $origin . $path);
 
         /**
          * Filters the finished preview link, for a frontend whose preview route
@@ -142,7 +152,7 @@ final class PreviewUrl
          * @param WP_Post              $post   The post being previewed.
          * @param array<string, mixed> $params The signed query parameters.
          */
-        return (string) apply_filters('perimetre_core_preview_url', $url, $post, $params);
+        return esc_url_raw((string) apply_filters('perimetre_core_preview_url', $url, $post, $params));
     }
 
     /**
