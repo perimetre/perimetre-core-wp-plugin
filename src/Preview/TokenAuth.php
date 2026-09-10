@@ -77,12 +77,21 @@ final class TokenAuth
         if (! empty($userId) || self::$resolving) {
             return $userId;
         }
-        if (! self::is_graphql_request()) {
+        // Cheapest, filter-free check first: an ordinary request carries no
+        // preview header, and leaves this filter without running anything.
+        if (self::header() === '') {
             return $userId;
         }
 
+        // Everything below is inside the guard — reading WPGraphQL's configured
+        // endpoint runs the `graphql_endpoint` filter, which is third-party
+        // code like any other and must not be able to re-enter this resolution.
         self::$resolving = true;
         try {
+            if (! self::is_graphql_request()) {
+                return $userId;
+            }
+
             return self::resolve() ?? $userId;
         } finally {
             self::$resolving = false;
@@ -170,17 +179,43 @@ final class TokenAuth
     }
 
     /**
-     * Match the endpoint path directly — the same `graphql` slug WPGraphQL
-     * routes on. Not `is_graphql_http_request()`: it is not reliable this early
-     * (`determine_current_user` can fire before WPGraphQL's `init` work) and
-     * must not be given a chance to resolve the current user from inside its own
-     * resolution.
+     * Match the endpoint path directly. Not `is_graphql_http_request()`: it is
+     * not reliable this early (`determine_current_user` can fire before
+     * WPGraphQL's `init` work) and must not be given a chance to resolve the
+     * current user from inside its own resolution.
+     *
+     * The path is compared against WPGraphQL's *configured* endpoint rather
+     * than a hardcoded `graphql` suffix, in both directions: a project that
+     * renamed the endpoint still authenticates, and an unrelated route that
+     * happens to end in `/graphql` does not.
      */
     private static function is_graphql_request(): bool
     {
         $uri = $_SERVER['REQUEST_URI'] ?? '';
         $path = is_string($uri) ? (string) parse_url($uri, PHP_URL_PATH) : '';
+        $path = trim($path, '/');
+        if ($path === '') {
+            return false;
+        }
 
-        return (bool) preg_match('#(^|/)graphql/?$#', $path);
+        // `site_url()` keeps subdirectory installs working — the endpoint sits
+        // under the site's own path there, not at the domain root.
+        $expected = trim(
+            (string) parse_url(site_url(self::graphql_endpoint()), PHP_URL_PATH),
+            '/'
+        );
+
+        return $expected !== '' && $path === $expected;
+    }
+
+    /**
+     * WPGraphQL's configured endpoint slug, defaulting to its own default when
+     * the plugin is not loaded yet (this filter can fire that early).
+     */
+    private static function graphql_endpoint(): string
+    {
+        $endpoint = function_exists('graphql_get_endpoint') ? graphql_get_endpoint() : 'graphql';
+
+        return is_string($endpoint) && trim($endpoint, '/') !== '' ? trim($endpoint, '/') : 'graphql';
     }
 }
