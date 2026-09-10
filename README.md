@@ -29,6 +29,7 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 - Provides GraphQL registration utilities that enforce naming conventions
 - Hosts shared blocks that are used across multiple projects (grows over time)
 - Provides configurable outgoing webhooks on post status changes (publish, draft, trash, delete)
+- Points the WordPress **Preview** button at a headless frontend, signed, and authenticates the frontend's draft reads as the editor who clicked it
 
 > **Operational features moved out.** The status / health-check endpoint and Helm portal Remote Login were split into a separate plugin, [Perimetre WP Tools](https://github.com/perimetre/perimetre-wp-tools-plugin), so they can be deployed on any site (including standard, non-headless client sites) without the block/GraphQL framework. See the [2.0.0 changelog](#changelog).
 
@@ -45,6 +46,7 @@ What it does **not** do:
 Perimetre Core is designed for headless Perimetre projects but is safe to install on any standard WordPress site. The plugin's surface area is opt-in and the defaults don't change anything about a host site:
 
 - **Webhooks** are off by default. The dispatcher doesn't fire until the master toggle is on and a URL is configured.
+- **Frontend preview** is off by default, twice over: it needs a preview secret AND a project-supplied frontend URL (see [Frontend Preview](#frontend-preview)). Without both, the Preview button behaves exactly as WordPress shipped it.
 - **Block abstracts** (`AcfBlock`, `NativeBlock`) only register blocks the host project explicitly opts into via `Registry::register_block()`. Existing ACF blocks registered the conventional way are untouched.
 - **GraphQL utilities** are no-ops unless WPGraphQL is installed and active.
 - **CTA helpers** are pure functions — they only run when called.
@@ -117,9 +119,17 @@ perimetre-core/
 │   │   └── Shared/             Shared blocks used across projects. Empty initially.
 │   ├── GraphQL/
 │   │   └── Registry.php        GraphQL registration utilities. Enforces naming conventions.
+│   ├── Preview/
+│   │   ├── Settings.php        Preview secret field, on the Perimetre Core options page.
+│   │   ├── PreviewUrl.php      Builds and signs the frontend preview link; filters preview_post_link.
+│   │   ├── TokenAuth.php       Accepts that signature back as the GraphQL credential.
+│   │   └── EditorPreviewPane.php  Side-by-side preview sidebar in the block editor.
 │   └── Webhook/
 │       ├── Settings.php        Webhooks options page (ACF-backed).
 │       └── Dispatcher.php      Post status hooks and outgoing HTTP dispatch.
+├── assets/
+│   ├── editor.css              Styles the AcfBlock editor previews.
+│   └── editor-preview.js       The side-by-side preview sidebar (plain wp.* globals, no build step).
 ├── languages/
 │   ├── perimetre-core.pot      Translation template.
 │   ├── perimetre-core-fr_FR.po French translations.
@@ -560,6 +570,63 @@ wp perimetre:seo-excerpt-audit --post_type=page --timings-only   # cost, without
 
 ---
 
+## Frontend Preview
+
+WordPress's **Preview** button opens `preview_post_link` — the WP permalink, which on a headless site renders nothing useful. This points it at the frontend's own preview route instead, signed so the frontend can trust it, and hands the frontend a credential to read the draft with:
+
+```
+{frontend}/preview/{post type}/{post id}/?locale=<code>&exp=<unix s>&user=<editor id>&token=<hex hmac>
+```
+
+`token = HMAC-SHA256("{id}|{type}|{locale}|{exp}|{user}", preview secret)`, 12-hour expiry.
+
+### How the credential works
+
+The signed payload does double duty. The frontend verifies the signature (so a stranger cannot render drafts), then forwards **the same payload + signature** to WPGraphQL as an `X-Preview-Auth` header. `Preview\TokenAuth` re-verifies it against the same secret and tells WordPress the current user is the `user` baked into the token — the editor who clicked Preview.
+
+So the draft is read with that editor's own capabilities. There is **no service account, no Application Password, and no shared "preview user"** anywhere in the flow, and a leaked link grants read-as-that-editor for at most 12 hours rather than forever.
+
+`TokenAuth` refuses: tampered or expired tokens, users who have since lost `edit_posts`, requests that already authenticated some other way, and anything that is not a GraphQL request. Every refusal is silent — the frontend sees "draft not visible" and renders its 404, never a GraphQL error.
+
+### Setup
+
+1. **Secret** — **Settings → Perimetre Core → Frontend Preview → Preview secret**, or define `PERIMETRE_PREVIEW_SECRET` in `wp-config.php` to keep it out of the database (the constant wins when defined). Generate with `openssl rand -hex 32`. The frontend holds the identical value in its own environment, conventionally `PREVIEW_SECRET`.
+2. **Frontend URL** — answer one filter from Project Core. Returning `null` for a post is how you opt out the types your frontend has no route for:
+
+```php
+add_filter('perimetre_core_preview_frontend_url', [self::class, 'previewFrontendUrl'], 10, 2);
+
+public static function previewFrontendUrl(?string $url, WP_Post $post): ?string
+{
+    // Only the post types the frontend actually renders.
+    return MySettings::templateFor($post->post_type) === null
+        ? null
+        : MySettings::baseUrl();
+}
+```
+
+3. **Frontend route** — implement `/preview/{type}/{id}/`, recompute the HMAC over `id|type|locale|exp|user`, and send the payload back as `X-Preview-Auth` on its GraphQL reads. Mark it `noindex` and keep it out of the sitemap.
+
+Until both 1 and 2 are in place nothing changes: no signed links, no editor pane, and `TokenAuth` authenticates nothing.
+
+### The editor pane
+
+`Preview\EditorPreviewPane` adds a **Site preview** sidebar to the block editor holding an `<iframe>` of the signed link, widened while open so it reads side-by-side, plus an entry in the Preview dropdown. It reloads itself whenever a save or autosave finishes, so Gutenberg's own autosave is what drives it.
+
+Only block-editor post types get the pane. A CPT registered `show_in_rest => false` uses the Classic editor, where there is nothing to add a sidebar to — its Preview button still opens the signed link in a new tab.
+
+Because the token travels in the URL and not a cookie, the frame works in every browser (Safari included) and across whatever domains the CMS and frontend live on — a local `next dev` included.
+
+### Filters
+
+| Filter | Default | Purpose |
+|---|---|---|
+| `perimetre_core_preview_frontend_url` | `null` (feature off) | The frontend origin for this post, or `null` for no preview. **Required.** |
+| `perimetre_core_preview_locale` | WPML language code, else the site locale's language | The language code baked into the link |
+| `perimetre_core_preview_url` | the built URL | Last-resort rewrite, for a frontend whose route has a different shape (a locale path prefix, say) |
+
+---
+
 ## Naming Conventions
 
 | Concept | Convention | Example |
@@ -597,13 +664,17 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.1.0**
+**2.2.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.2.0
+
+- **Added headless frontend preview.** WordPress's **Preview** button now opens the frontend's own preview route, signed with a shared secret (`HMAC-SHA256` over `id|type|locale|exp|user`, 12h expiry), and the block editor gains a side-by-side **Site preview** pane that refreshes on every save/autosave. The signed link doubles as the frontend's GraphQL credential: `Preview\TokenAuth` verifies it on the way back in and runs the read as the editor who clicked Preview, so drafts resolve under that editor's own capabilities — no service account, no Application Password, no shared preview user, and a leaked link expires. Stateless on purpose (token in the URL, no cookie), so the iframe works in Safari and across separate CMS/frontend domains. Off until a preview secret is set **and** Project Core answers `perimetre_core_preview_frontend_url`; the Preview button is untouched otherwise. See [Frontend Preview](#frontend-preview).
 
 ### 2.1.0
 

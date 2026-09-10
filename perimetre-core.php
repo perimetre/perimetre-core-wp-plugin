@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Perimetre Core
  * Description: Shared agency plugin for headless WordPress projects.
- * Version: 2.1.0
+ * Version: 2.2.0
  * Author: Perimetre
  * Author URI: https://perimetre.co
  * Requires at least: 6.4
@@ -18,7 +18,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('PERIMETRE_CORE_VERSION', '2.1.0');
+define('PERIMETRE_CORE_VERSION', '2.2.0');
 define('PERIMETRE_CORE_FILE', __FILE__);
 define('PERIMETRE_CORE_PATH', plugin_dir_path(__FILE__));
 define('PERIMETRE_CORE_URL', plugin_dir_url(__FILE__));
@@ -31,6 +31,10 @@ use Perimetre\Core\GraphQL\CacheControl as GraphQLCacheControl;
 use Perimetre\Core\GraphQL\Registry as GraphQLRegistry;
 use Perimetre\Core\CLI\SeoExcerptAuditCommand;
 use Perimetre\Core\Plugin;
+use Perimetre\Core\Preview\EditorPreviewPane as PreviewEditorPane;
+use Perimetre\Core\Preview\PreviewUrl;
+use Perimetre\Core\Preview\Settings as PreviewSettings;
+use Perimetre\Core\Preview\TokenAuth as PreviewTokenAuth;
 use Perimetre\Core\SEO\MetaDescriptionVariable;
 use Perimetre\Core\Webhook\Dispatcher as WebhookDispatcher;
 use Perimetre\Core\Webhook\Settings as WebhookSettings;
@@ -73,6 +77,21 @@ GraphQLCacheControl::register();
  */
 WebhookSettings::register();
 WebhookDispatcher::register();
+
+/**
+ * Headless frontend preview: point WordPress's Preview button at the frontend's
+ * signed preview route, accept that signature back as the GraphQL credential
+ * (so drafts are read as the editor who clicked Preview), and give the block
+ * editor a side-by-side pane.
+ *
+ * Inert until BOTH a preview secret is configured (Settings > Perimetre Core,
+ * or the PERIMETRE_PREVIEW_SECRET constant) AND the project answers the
+ * `perimetre_core_preview_frontend_url` filter with its frontend origin.
+ */
+PreviewSettings::register();
+PreviewUrl::register();
+PreviewTokenAuth::register();
+PreviewEditorPane::register();
 
 /**
  * Enqueue the block-editor stylesheet that styles the InnerBlocks
