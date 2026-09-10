@@ -626,6 +626,19 @@ Only block-editor post types get the pane. A CPT registered `show_in_rest => fal
 
 Because the token travels in the URL and not a cookie, the frame works in every browser (Safari included) and across whatever domains the CMS and frontend live on — a local `next dev` included.
 
+### Coexisting with a project that already has its own preview
+
+Core auto-updates on every client site, so this subsystem lands on projects that already rolled their own preview (oiq-placepourtoi is one). It does not disturb them, because it is gated on things only a deliberate opt-in satisfies:
+
+- **No secret → no link.** `PreviewUrl::for()` returns `null`, so the `preview_post_link` filter returns the incoming URL untouched and the project's own filter (at the usual priority 10) is what the editor sees. Verified: with the secret removed, `get_preview_post_link()` falls straight through to the project's permalink template.
+- **No `perimetre_core_preview_frontend_url` listener → no link**, even if someone fills the secret field in. That filter is the hard gate: a project cannot satisfy it by accident.
+- **No link → no pane.** `EditorPreviewPane::enqueue()` bails on the same `null`, so the editor script is never enqueued and cannot collide with a project's own sidebar.
+- **No secret → no authentication.** `TokenAuth` returns the incoming user before looking at any header, so a project's own `determine_current_user` filter keeps working.
+
+The one visible change on such a site is a new **Preview secret** field on Settings → Perimetre Core, alongside whatever field the project already has elsewhere. Harmless, but worth knowing before someone fills in both.
+
+**Migrating a project onto this subsystem** means: delete the project's own `Preview\*` classes and its `preview_post_link` filter, answer `perimetre_core_preview_frontend_url`, move the shared secret to Core's field (or the `PERIMETRE_PREVIEW_SECRET` constant), and point the frontend at `/preview/{type}/{id}/?locale=…`. A frontend whose preview route has a different shape — a locale path prefix, say — keeps it by filtering `perimetre_core_preview_url` instead of changing its routes.
+
 ### Filters
 
 | Filter | Default | Purpose |
