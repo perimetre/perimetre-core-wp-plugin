@@ -25,11 +25,16 @@ Push a semver tag to trigger the GitHub Actions release workflow, which builds a
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-**When making changes that warrant a version bump**, update all three locations:
+**When making changes that warrant a version bump**, update all four locations:
 
 1. `Version:` header in `perimetre-core.php`
-2. **Current Version** section in `README.md`
-3. **Changelog** section in `README.md` (add a new entry above previous versions)
+2. `PERIMETRE_CORE_VERSION` constant in `perimetre-core.php` — it must match the header. The update checker reads the header, but this constant is the cache-busting version on every enqueued script and style (`Plugin.php`, `Preview\EditorPreviewPane`), so a stale value ships old editor assets to browsers that already cached them.
+3. **Current Version** section in `README.md`
+4. **Changelog** section in `README.md` (add a new entry above previous versions)
+
+The release commit's subject carries the version in parentheses, e.g.
+`fix(webhook): report headless taxonomies and removed terms (v2.3.0)`. Merge the
+PR first, then tag the MERGE commit on `main` — that is what the tags point at.
 
 ## Architecture
 

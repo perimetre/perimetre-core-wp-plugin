@@ -491,6 +491,9 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
     "category": ["news"],
     "post_tag": ["launch"]
   },
+  "taxonomies_removed": {
+    "category": ["archive"]
+  },
   "timestamp": 1713000000,
   "old_status": "draft",
   "new_status": "publish"
@@ -499,8 +502,11 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
 
 - `permalink` — relative URL path, useful for on-demand revalidation (e.g. Next.js `revalidatePath`)
 - `language` — WPML language code when WPML is active, `null` otherwise
-- `taxonomies` — public taxonomy terms keyed by taxonomy slug, so the frontend can revalidate archive pages
+- `taxonomies` — the post's terms, keyed by taxonomy slug, so the frontend can revalidate archive pages. Includes taxonomies registered `'public' => false` as long as they are reachable some other way (`publicly_queryable`, `show_in_rest` or `show_in_graphql`) — which is how a headless project registers them. Filter with `perimetre_core_webhook_reportable_taxonomy`.
+- `taxonomies_removed` — terms the post was removed from during this save, same shape. **Present only when something was removed.** A frontend that caches an archive page per term needs this: the term is absent from `taxonomies` precisely because it was removed, so nothing else tells the frontend that that archive must drop the post, and it would keep serving it until its cache expired on time.
 - `old_status` / `new_status` — included on status transitions, omitted on permanent deletes
+
+Post webhooks are built and sent on `shutdown`, not the moment the post is saved. That is what lets the payload describe the post's final state: the REST controller (the block editor, and any `show_in_rest` post type) updates the post *before* applying its terms, so a payload built at `transition_post_status` time reports the terms as they were before the save. It also means a request that saves the same post several times — an ACF write that re-saves, a `save_post` hook calling `wp_update_post()` — sends ONE webhook rather than several identical ones.
 
 ### Options Payload
 
@@ -686,13 +692,19 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.2.0**
+**2.3.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.3.0
+
+- **Fixed: `taxonomies` was always empty on headless projects.** The payload only reported taxonomies registered `'public' => true`, but a headless site renders no term archives in WordPress and therefore registers its taxonomies `'public' => false`, exposing them through GraphQL or REST instead. Every product/CPT webhook shipped `"taxonomies": []`, so a frontend keying cache invalidation off those terms silently invalidated nothing and its listing pages stayed stale until they expired on time. A taxonomy is now reported when it is reachable by *any* consumer — `public`, `publicly_queryable`, `show_in_rest` or `show_in_graphql` — which still excludes genuinely internal taxonomies such as ElasticPress's `ep_custom_result`. Override per taxonomy with the new `perimetre_core_webhook_reportable_taxonomy` filter.
+- **Added `taxonomies_removed` to post payloads.** Reports the terms a post was just taken out of, captured from `set_object_terms`'s `$old_tt_ids` — the only point at which WordPress still knows the previous terms. Without it, removing a post from a term was invisible downstream: the term is missing from `taxonomies` *because* it was removed, so a frontend caching an archive per term had no signal to drop the post and kept listing it. Adding a term worked; removing one did not. The key is omitted entirely when nothing was removed.
+- **Post webhooks are now built and sent on `shutdown`.** Previously the payload was assembled inside `transition_post_status`. The REST controller — the block editor, and any `show_in_rest` post type — updates the post *before* applying its terms, so those payloads reported the terms as they were before the save. Deferring to the end of the request means the payload always describes the post's final state, and it collapses repeated saves of the same post within one request into a single webhook instead of several identical ones. Deletes are unaffected: their payload is still captured while the post exists. No payload-shape change and no project code to update.
 
 ### 2.2.0
 
