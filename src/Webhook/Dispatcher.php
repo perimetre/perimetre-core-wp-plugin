@@ -14,6 +14,23 @@ final class Dispatcher
     /** @var array<int, \WP_Term> */
     private static array $menu_cache = [];
 
+    /**
+     * Post events awaiting dispatch, keyed by post ID so repeated saves of the
+     * same post within one request collapse into a single webhook. See `flush()`.
+     *
+     * @var array<int, array{event: string, old_status: ?string, new_status: ?string, payload: ?array<string, mixed>}>
+     */
+    private static array $pending = [];
+
+    /**
+     * Terms removed from a post during this request, as
+     * `[post_id][taxonomy] => list<slug>`. Populated by `on_set_object_terms()`
+     * and merged into the payload as `taxonomies_removed`.
+     *
+     * @var array<int, array<string, list<string>>>
+     */
+    private static array $removed_terms = [];
+
     /** @var array<string, string> */
     private const STATUS_MAP = [
         'publish' => 'publish',
@@ -28,6 +45,13 @@ final class Dispatcher
     {
         add_action('transition_post_status', [self::class, 'on_transition'], 10, 3);
         add_action('before_delete_post', [self::class, 'on_delete'], 10, 2);
+        // Terms are recorded as they change so the payload can report what was
+        // REMOVED, which `get_the_terms()` can no longer see once the save is
+        // over. Priority 10 with 6 args — WordPress passes `$old_tt_ids` last.
+        add_action('set_object_terms', [self::class, 'on_set_object_terms'], 10, 6);
+        // Post payloads are built and sent here, not at transition time — see
+        // `flush()`.
+        add_action('shutdown', [self::class, 'flush'], 10, 0);
         add_action('acf/save_post', [self::class, 'on_options_save'], 20);
         add_action('wp_update_nav_menu', [self::class, 'on_menu_save'], 10);
         add_action('wp_delete_nav_menu', [self::class, 'on_menu_delete'], 10);
@@ -63,8 +87,138 @@ final class Dispatcher
 
         $event_label = self::resolve_event_label($new_status, $old_status);
 
-        $payload = self::build_payload($event_label, $post, $old_status, $new_status);
-        self::dispatch($payload);
+        // Buffered, not sent: the payload is built in `flush()` on `shutdown`.
+        // Two reasons, both about reading the post's FINAL state:
+        //
+        //  - Term timing. `wp_insert_post()` writes `tax_input` terms before
+        //    firing `transition_post_status`, but the REST controller (the
+        //    block editor, and any `show_in_rest` post type) updates the post
+        //    first and applies terms AFTERWARDS. Building the payload here
+        //    reads the terms as they were BEFORE the save for those post types.
+        //  - Removed terms. `on_set_object_terms()` may not have run yet for
+        //    the same reason, so `taxonomies_removed` would be empty.
+        //
+        // Keyed by post ID, so a request that saves the same post repeatedly
+        // (an ACF write that re-saves, a `save_post` hook that calls
+        // `wp_update_post()`) sends ONE webhook instead of several identical
+        // ones. The first event label wins — it describes the transition that
+        // actually happened, e.g. `post.published` is not downgraded to
+        // `post.updated` by a follow-up save.
+        self::$pending[$post->ID] ??= [
+            'event'      => $event_label,
+            'old_status' => $old_status,
+            'new_status' => $new_status,
+            'payload'    => null,
+        ];
+    }
+
+    /**
+     * Records the terms REMOVED from a post, so the payload can report them.
+     *
+     * This is the only place WordPress exposes the previous terms: once the
+     * save completes, `get_the_terms()` returns the new set and what was taken
+     * away is unrecoverable. A headless frontend needs it — a listing page for
+     * a term the post no longer has gets no other signal that it must drop the
+     * post, so it keeps showing it until its cache expires on time.
+     *
+     * @param array<int, int|string> $tt_ids     Term taxonomy IDs after the change.
+     * @param array<int, int|string> $old_tt_ids Term taxonomy IDs before it.
+     */
+    public static function on_set_object_terms(
+        int $object_id,
+        mixed $terms,
+        mixed $tt_ids,
+        string $taxonomy,
+        mixed $append,
+        mixed $old_tt_ids,
+    ): void {
+        if (! is_array($tt_ids) || ! is_array($old_tt_ids)) {
+            return;
+        }
+
+        // `set_object_terms` fires for every taxonomy on every object; ignore
+        // anything this site does not dispatch for.
+        $post = get_post($object_id);
+        if (
+            ! $post instanceof WP_Post
+            || ! in_array($post->post_type, Settings::get_post_types(), true)
+        ) {
+            return;
+        }
+
+        $removed = array_diff(
+            array_map('intval', $old_tt_ids),
+            array_map('intval', $tt_ids),
+        );
+
+        if ($removed === []) {
+            return;
+        }
+
+        $slugs = [];
+        foreach ($removed as $tt_id) {
+            // `get_term_by('term_taxonomy_id')` still resolves here: the row is
+            // only unlinked from the object, the term itself still exists.
+            $term = get_term_by('term_taxonomy_id', $tt_id);
+            if ($term instanceof \WP_Term && $term->slug !== '') {
+                $slugs[] = $term->slug;
+            }
+        }
+
+        if ($slugs === []) {
+            return;
+        }
+
+        $existing = self::$removed_terms[$object_id][$taxonomy] ?? [];
+        self::$removed_terms[$object_id][$taxonomy] = array_values(
+            array_unique([...$existing, ...$slugs]),
+        );
+    }
+
+    /**
+     * Builds and sends every buffered post webhook, at the end of the request.
+     *
+     * Deferring to `shutdown` is what makes the payload describe the post's
+     * final state rather than a mid-save snapshot — see `on_transition()`.
+     * Deletes are the exception: their payload is built at hook time, while the
+     * post still exists, and is passed through here untouched.
+     */
+    public static function flush(): void
+    {
+        $pending = self::$pending;
+        $removed = self::$removed_terms;
+
+        // Cleared before dispatching so a fatal or a re-entrant `flush()`
+        // cannot send the same webhooks twice.
+        self::$pending = [];
+        self::$removed_terms = [];
+
+        foreach ($pending as $post_id => $entry) {
+            $payload = $entry['payload'];
+
+            if ($payload === null) {
+                $post = get_post($post_id);
+
+                // Gone before shutdown — the post was deleted later in the same
+                // request, and `post.deleted` already covers it.
+                if (! $post instanceof WP_Post) {
+                    continue;
+                }
+
+                $payload = self::build_payload(
+                    $entry['event'],
+                    $post,
+                    $entry['old_status'],
+                    $entry['new_status'],
+                );
+            }
+
+            if (isset($removed[$post_id]) && $removed[$post_id] !== []) {
+                $payload['taxonomies_removed'] = $removed[$post_id];
+            }
+
+            self::dispatch($payload);
+        }
     }
 
     public static function on_delete(int $post_id, WP_Post $post): void
@@ -89,8 +243,16 @@ final class Dispatcher
             return;
         }
 
-        $payload = self::build_payload('post.deleted', $post);
-        self::dispatch($payload);
+        // Built now, while the post and its terms still exist, but queued so it
+        // keeps the ordering and de-duplication of everything else. Overwrites
+        // any pending transition for this post: it is being deleted, so the
+        // earlier status change is moot.
+        self::$pending[$post_id] = [
+            'event'      => 'post.deleted',
+            'old_status' => null,
+            'new_status' => null,
+            'payload'    => self::build_payload('post.deleted', $post),
+        ];
     }
 
     /**
@@ -364,7 +526,53 @@ final class Dispatcher
     }
 
     /**
-     * Returns public taxonomy terms keyed by taxonomy slug.
+     * Whether a taxonomy should appear in the webhook payload.
+     *
+     * This used to test `$taxonomy->public`, which was wrong for exactly the
+     * sites Core exists to serve. A headless project renders no term archives
+     * in WordPress, so it registers its taxonomies `'public' => false` and
+     * exposes them through GraphQL or REST instead. The result was that
+     * `taxonomies` arrived EMPTY on every product/CPT webhook, and a frontend
+     * that keyed its cache invalidation off those terms never invalidated
+     * anything — listings stayed stale until their cache expired on time.
+     *
+     * The test is therefore "is this taxonomy reachable by a consumer", not "is
+     * it public on the WordPress front end": any of `public`,
+     * `publicly_queryable`, `show_in_rest` or `show_in_graphql` qualifies. That
+     * keeps genuinely internal taxonomies (ElasticPress's `ep_custom_result`,
+     * private grouping taxonomies) out of the payload.
+     *
+     * Filterable so a project can force a taxonomy in or out.
+     *
+     * @param \WP_Taxonomy $taxonomy
+     */
+    private static function is_reportable_taxonomy(\WP_Taxonomy $taxonomy): bool
+    {
+        $reportable = $taxonomy->public
+            || $taxonomy->publicly_queryable
+            || $taxonomy->show_in_rest
+            // Not a core `WP_Taxonomy` property — WPGraphQL adds it from the
+            // registration args, so it is only set when that plugin is active.
+            || ! empty($taxonomy->show_in_graphql);
+
+        /**
+         * Filters whether a taxonomy is reported in webhook payloads.
+         *
+         * @param bool         $reportable Whether to include it.
+         * @param \WP_Taxonomy $taxonomy   The taxonomy being considered.
+         */
+        return (bool) apply_filters(
+            'perimetre_core_webhook_reportable_taxonomy',
+            $reportable,
+            $taxonomy,
+        );
+    }
+
+    /**
+     * Returns the post's taxonomy terms keyed by taxonomy slug.
+     *
+     * Which taxonomies count is decided by `is_reportable_taxonomy()` — NOT by
+     * `public` alone, which silently emptied this array on every headless site.
      *
      * @return array<string, list<string>>
      */
@@ -374,7 +582,7 @@ final class Dispatcher
         $result = [];
 
         foreach ($taxonomies as $taxonomy) {
-            if (! $taxonomy->public) {
+            if (! self::is_reportable_taxonomy($taxonomy)) {
                 continue;
             }
 
