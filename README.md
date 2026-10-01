@@ -28,7 +28,7 @@ The repository name reflects the platform and purpose. The plugin slug is what W
 - Provides a central block registry that Project Core uses to register all blocks
 - Provides GraphQL registration utilities that enforce naming conventions
 - Hosts shared blocks that are used across multiple projects (grows over time)
-- Provides configurable outgoing webhooks on post status changes (publish, draft, trash, delete)
+- Provides configurable outgoing webhooks on post status changes (publish, draft, trash, delete), options and menu saves, GraphQL cache purges and completed imports — carrying the facts a headless frontend needs to revalidate precisely
 - Points the WordPress **Preview** button at a headless frontend, signed, and authenticates the frontend's draft reads as the editor who clicked it
 
 > **Operational features moved out.** The status / health-check endpoint and Helm portal Remote Login were split into a separate plugin, [Perimetre WP Tools](https://github.com/perimetre/perimetre-wp-tools-plugin), so they can be deployed on any site (including standard, non-headless client sites) without the block/GraphQL framework. See the [2.0.0 changelog](#changelog).
@@ -458,8 +458,10 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
 | Webhook URLs | — | One or more endpoints that receive the POST request. Add as many as needed; every URL receives each event. |
 | Secret Token | — | Sent as a `Bearer` token in the `Authorization` header on every request. |
 | Watched Post Types | All public types | Which post types trigger webhooks. Leave empty to watch all. |
-| Watched Events | Publish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates). |
+| Watched Events | Publish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates, GraphQL cache purges). |
 | Request Timeout (s) | 5 | HTTP timeout (1–30 seconds). Requests are non-blocking. |
+
+The plugin **reports facts WordPress knows at save time**. It never computes frontend cache tags or paths beyond the post's own permalink — mapping `descendants`, `translations`, `purge_keys` and the rest onto `revalidateTag` / `revalidatePath` calls is the receiver's job, because only the frontend knows how it tagged its caches.
 
 ### Events
 
@@ -475,18 +477,24 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
 | `options.saved` | ACF options page is saved (excludes the webhook settings page itself) |
 | `menu.saved` | Navigation menu is created or updated |
 | `menu.deleted` | Navigation menu is deleted |
+| `cache.purged` | WPGraphQL Smart Cache evicted keys in a request that produced no other webhook — a term, media, user or menu-location change. Requires the **GraphQL Cache Purged** watched event (off by default). |
+| `import.completed` | An import finished (`import_end`, `WP_IMPORTING`, or `perimetre_core_webhooks_resume()`). Replaces the per-post webhooks of the run. No checkbox: it stands in for post events the site already watches. |
 
 ### Post Payload
 
 ```json
 {
-  "event": "post.published",
+  "event": "post.updated",
   "post_id": 42,
   "post_type": "page",
-  "post_slug": "about-us",
-  "post_title": "About Us",
-  "permalink": "/about-us/",
+  "post_slug": "about",
+  "post_title": "About",
+  "permalink": "/about/",
+  "old_permalink": "/about-us/",
   "language": "en",
+  "translations": [
+    { "post_id": 57, "language": "fr", "permalink": "/fr/a-propos/" }
+  ],
   "taxonomies": {
     "category": ["news"],
     "post_tag": ["launch"]
@@ -494,19 +502,29 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
   "taxonomies_removed": {
     "category": ["archive"]
   },
+  "descendants": [43, 44, 61],
+  "embedders": [120, 121],
   "timestamp": 1713000000,
-  "old_status": "draft",
-  "new_status": "publish"
+  "old_status": "publish",
+  "new_status": "publish",
+  "purge_keys": ["cG9zdDo0Mg==", "list:page", "skipped:post"],
+  "purge_events": ["post_updated"],
+  "purge_all": false
 }
 ```
 
 - `permalink` — relative URL path, useful for on-demand revalidation (e.g. Next.js `revalidatePath`)
+- `old_permalink` — the relative path the post had **before** this save, when its slug or parent changed; `null` otherwise. Captured on `pre_post_update`, the last moment WordPress still holds the old row, and only for posts that were published (a draft has no live path to drop). Trashing leaves it `null`: `permalink` already reports the pre-`__trashed` path. Without it the page at the old URL keeps serving from cache until it expires on time.
 - `language` — WPML language code when WPML is active, `null` otherwise
+- `translations` — WPML only: the **published** other-language versions of this post as `{ post_id, language, permalink }`, from `wpml_element_trid` / `wpml_get_element_translations`. Empty when WPML is inactive or the post has no translations. A translated page links to its siblings (language switcher, `hreflang`), so a slug change on one must revalidate the others.
 - `taxonomies` — the post's terms, keyed by taxonomy slug, so the frontend can revalidate archive pages. Includes taxonomies registered `'public' => false` as long as they are reachable some other way (`publicly_queryable`, `show_in_rest` or `show_in_graphql`) — which is how a headless project registers them. Filter with `perimetre_core_webhook_reportable_taxonomy`.
 - `taxonomies_removed` — terms the post was removed from during this save, same shape. **Present only when something was removed.** A frontend that caches an archive page per term needs this: the term is absent from `taxonomies` precisely because it was removed, so nothing else tells the frontend that that archive must drop the post, and it would keep serving it until its cache expired on time.
+- `descendants` — hierarchical post types only: IDs of every **published** descendant, all levels down, walked one query per level. A child's URL embeds its parents' slugs, so renaming or moving a parent moves every page beneath it. Capped by the `perimetre_core_webhook_descendants_limit` filter (default 500); when the cap is hit the list is cut and `descendants_truncated: true` is added so the receiver can fall back to a broader revalidation. Empty array for non-hierarchical types.
+- `embedders` — IDs of other posts that embed this one (a product showing a document, a landing page pulling in a testimonial). Core cannot know a project's relationships, so this is **empty unless Project Core answers the `perimetre_core_webhook_embedders` filter** — see [Filters](#webhook-filters).
 - `old_status` / `new_status` — included on status transitions, omitted on permanent deletes
+- `purge_keys` / `purge_events` / `purge_all` — what [WPGraphQL Smart Cache](https://github.com/wp-graphql/wp-graphql/tree/main/plugins/wp-graphql-smart-cache) evicted during the request: every key passed to its `graphql_purge` action (Relay global IDs such as `cG9zdDo0Mg==`, list keys such as `list:page`, `skipped:<type>` markers), the events that caused them, and whether `wpgraphql_cache_purge_all` fired. Keys are forwarded verbatim; the receiver maps them onto its own cache tags. Always present on post, options and menu payloads — empty / `false` when Smart Cache is not installed. Every payload sent from one request carries the full set of keys purged during it.
 
-Post webhooks are built and sent on `shutdown`, not the moment the post is saved. That is what lets the payload describe the post's final state: the REST controller (the block editor, and any `show_in_rest` post type) updates the post *before* applying its terms, so a payload built at `transition_post_status` time reports the terms as they were before the save. It also means a request that saves the same post several times — an ACF write that re-saves, a `save_post` hook calling `wp_update_post()` — sends ONE webhook rather than several identical ones.
+Post webhooks are built and sent on `shutdown`, not the moment the post is saved. That is what lets the payload describe the post's final state: the REST controller (the block editor, and any `show_in_rest` post type) updates the post *before* applying its terms, so a payload built at `transition_post_status` time reports the terms as they were before the save. It also means a request that saves the same post several times — an ACF write that re-saves, a `save_post` hook calling `wp_update_post()` — sends ONE webhook rather than several identical ones. Since 2.4.0 options and menu payloads are queued to `shutdown` too, so they can carry the purge facts; the Smart Cache purge on an options save still happens in the hook, before dispatch.
 
 ### Options Payload
 
@@ -514,9 +532,14 @@ Post webhooks are built and sent on `shutdown`, not the moment the post is saved
 {
   "event": "options.saved",
   "options_page": "acf-options-seo",
-  "timestamp": 1713000000
+  "timestamp": 1713000000,
+  "purge_keys": [],
+  "purge_events": [],
+  "purge_all": true
 }
 ```
+
+`purge_all` is `true` here because saving an options page fires `wpgraphql_cache_purge_all` (see the 1.15.0 changelog); opt out with `perimetre_core_purge_graphql_cache_on_options`.
 
 ### Menu Payload
 
@@ -526,7 +549,96 @@ Post webhooks are built and sent on `shutdown`, not the moment the post is saved
   "menu_id": 3,
   "menu_name": "Main Navigation",
   "menu_slug": "main-navigation",
+  "timestamp": 1713000000,
+  "purge_keys": ["bWVudTozNg==", "list:menu"],
+  "purge_events": ["update_nav_menu"],
+  "purge_all": false
+}
+```
+
+### Cache Purged Payload
+
+Sent only when the **GraphQL Cache Purged** watched event is on, WPGraphQL Smart Cache is active, and a request purged keys without producing any post, options or menu webhook. This is how term edits, media edits, user profile updates and menu-location assignments — which the dispatcher has no hook for — reach the frontend. It also fires for saves of post types you chose *not* to watch, since Smart Cache purges those too; that is why it is off by default.
+
+```json
+{
+  "event": "cache.purged",
+  "purge_keys": ["dGVybTo3", "list:category", "skipped:term"],
+  "purge_events": ["saved_term"],
+  "purge_all": false,
   "timestamp": 1713000000
+}
+```
+
+### Import Completed Payload
+
+During `import_start` … `import_end` (WordPress Importer), while `WP_IMPORTING` is defined (also set by WP-CLI's `wp import`), or between `perimetre_core_webhooks_suspend()` and `perimetre_core_webhooks_resume()`, no per-post webhook is sent. Posts that *would* have fired one (they still pass the enabled / watched post type / watched event gates) are collected and reported once, on `import_end`, on `resume()`, or on `shutdown` for `WP_IMPORTING` runs. Options and menu saves and Smart Cache purges during the run are dropped: an import is a signal to revalidate broadly, not to itemise.
+
+```json
+{
+  "event": "import.completed",
+  "post_types": ["page", "product"],
+  "post_ids": [101, 102, 103],
+  "count": 3,
+  "timestamp": 1713000000
+}
+```
+
+Batching from a WP-CLI command:
+
+```php
+perimetre_core_webhooks_suspend();
+try {
+    foreach ($rows as $row) {
+        wp_insert_post($row);
+    }
+} finally {
+    perimetre_core_webhooks_resume(); // sends ONE import.completed
+}
+```
+
+The helpers nest (every `suspend()` needs a matching `resume()`). An importer that cannot call them can return `true` from the `perimetre_core_webhook_suspended` filter instead; the batch then goes out on `shutdown`.
+
+### Webhook Filters
+
+| Filter | Default | Purpose |
+|---|---|---|
+| `perimetre_core_webhook_embedders` | `[]` | `(list<int> $ids, int $post_id, WP_Post $post)` — IDs of posts that embed the saved one. |
+| `perimetre_core_webhook_descendants_limit` | `500` | `(int $limit, WP_Post $post)` — cap on `descendants`; `descendants_truncated: true` when hit. |
+| `perimetre_core_webhook_suspended` | computed | `(bool $suspended)` — force per-post webhooks into one `import.completed`. |
+| `perimetre_core_webhook_reportable_taxonomy` | computed | `(bool $reportable, WP_Taxonomy $taxonomy)` — include or exclude a taxonomy from `taxonomies`. |
+| `perimetre_core_purge_graphql_cache_on_options` | `true` | `(bool $purge, string $page_slug)` — whether an options save purges the whole Smart Cache. |
+
+Reporting embedders from Project Core — a product that shows a document via an ACF relationship field:
+
+```php
+add_filter('perimetre_core_webhook_embedders', [DocumentEmbedders::class, 'report'], 10, 3);
+
+final class DocumentEmbedders
+{
+    /**
+     * @param list<int> $ids
+     * @return list<int>
+     */
+    public static function report(array $ids, int $post_id, \WP_Post $post): array
+    {
+        if ($post->post_type !== 'document') {
+            return $ids;
+        }
+
+        $products = get_posts([
+            'post_type'      => 'product',
+            'post_status'    => 'publish',
+            'fields'         => 'ids',
+            'posts_per_page' => 200,
+            'no_found_rows'  => true,
+            'meta_query'     => [
+                ['key' => 'related_documents', 'value' => '"' . $post_id . '"', 'compare' => 'LIKE'],
+            ],
+        ]);
+
+        return [...$ids, ...array_map('intval', $products)];
+    }
 }
 ```
 
@@ -692,13 +804,23 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.3.0**
+**2.4.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.4.0
+
+- **Post payloads now carry the facts a tag-based frontend cache needs.** Headless Next.js frontends tag their caches by CMS concept, and several of those concepts are only knowable inside WordPress at save time. Each is additive — no existing field or event name changed — and each sits behind the existing enabled / watched post type / watched event gates:
+  - `old_permalink` — the relative path the post had before its slug or parent changed (`null` otherwise), captured on `pre_post_update` while the stored row is still the old one. Only for published posts; trashing still reports the pre-`__trashed` path in `permalink` and leaves this `null`.
+  - `translations` — WPML only: the published other-language versions as `{ post_id, language, permalink }`, via `wpml_element_trid` / `wpml_get_element_translations`. Empty without WPML.
+  - `descendants` — hierarchical post types only: IDs of every published descendant, walked level by level with `post_parent__in`, capped by the new `perimetre_core_webhook_descendants_limit` filter (default 500) with `descendants_truncated: true` when the cap is hit.
+  - `embedders` — IDs of posts that embed the saved one, from the new `perimetre_core_webhook_embedders` filter. Empty until Project Core answers it; Core cannot know a project's relationships.
+- **WPGraphQL Smart Cache purges are reported.** Every key Smart Cache passes to its `graphql_purge` action during a request is buffered and sent as `purge_keys` (plus `purge_events`, and `purge_all` when `wpgraphql_cache_purge_all` fired) on the post, options and menu payloads of that request. When a request purges keys but produces no other webhook — a term edit, a media edit, a user profile update, a menu-location change, none of which the dispatcher has a hook for — a new **`cache.purged`** event carries them instead. That event has its own **GraphQL Cache Purged** checkbox under Watched Events, off by default because it also fires for post types you chose not to watch. Options and menu payloads are now queued to `shutdown` like post payloads so they can carry these facts; the purge-then-dispatch ordering of `options.saved` is unchanged.
+- **Imports send one webhook, not hundreds.** Between `import_start` and `import_end`, while `WP_IMPORTING` is defined, or inside the new `perimetre_core_webhooks_suspend()` / `perimetre_core_webhooks_resume()` helpers (nestable; also a `perimetre_core_webhook_suspended` filter), per-post webhooks are held back and the affected posts are reported once as a new **`import.completed`** event `{ post_types, post_ids, count }`. Options, menu and purge events during the run are dropped — an import means "revalidate broadly".
 
 ### 2.3.0
 

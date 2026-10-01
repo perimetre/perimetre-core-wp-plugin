@@ -139,8 +139,15 @@ final class Settings
                         'delete'  => __('Permanent Delete', 'perimetre-core'),
                         'options' => __('ACF Options Saved', 'perimetre-core'),
                         'menu'    => __('Menu Saved or Deleted', 'perimetre-core'),
+                        'purge'   => __('GraphQL Cache Purged (WPGraphQL Smart Cache)', 'perimetre-core'),
                     ],
                     'default_value'     => ['publish', 'trash', 'delete'],
+                    'instructions'      => __(
+                        'GraphQL Cache Purged sends a cache.purged event when WPGraphQL Smart Cache evicts keys '
+                        . 'that no post, options or menu webhook in the same request explains — term, media '
+                        . 'and user changes. Off by default.',
+                        'perimetre-core'
+                    ),
                     'conditional_logic' => [
                         [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
                     ],
@@ -174,17 +181,24 @@ final class Settings
     private static function get_info_message(): string
     {
         $payload = wp_json_encode([
-            'event'      => 'post.published',
-            'post_id'    => 42,
-            'post_type'  => 'page',
-            'post_slug'  => 'about-us',
-            'post_title' => 'About Us',
-            'permalink'  => '/about-us/',
-            'language'   => 'en',
-            'taxonomies' => (object) [],
-            'timestamp'  => 1713000000,
-            'old_status' => 'draft',
-            'new_status' => 'publish',
+            'event'         => 'post.published',
+            'post_id'       => 42,
+            'post_type'     => 'page',
+            'post_slug'     => 'about-us',
+            'post_title'    => 'About Us',
+            'permalink'     => '/about-us/',
+            'old_permalink' => null,
+            'language'      => 'en',
+            'translations'  => [],
+            'taxonomies'    => (object) [],
+            'descendants'   => [],
+            'embedders'     => [],
+            'timestamp'     => 1713000000,
+            'old_status'    => 'draft',
+            'new_status'    => 'publish',
+            'purge_keys'    => [],
+            'purge_events'  => [],
+            'purge_all'     => false,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
         $options_payload = wp_json_encode([
@@ -226,7 +240,10 @@ final class Settings
             . '<p><em>'
             . esc_html__(
                 'Post payloads: old_status/new_status included on transitions, omitted on deletes. '
-                . 'language is included when WPML is active, null otherwise.',
+                . 'language and translations come from WPML (null / empty otherwise); old_permalink is set '
+                . 'when the slug or parent changed; descendants lists published children of hierarchical '
+                . 'types; embedders is filled by the perimetre_core_webhook_embedders filter; purge_* report '
+                . 'WPGraphQL Smart Cache evictions. See the README for the full contract.',
                 'perimetre-core'
             )
             . '</em></p>';
