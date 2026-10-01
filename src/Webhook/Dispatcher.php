@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Perimetre\Core\Webhook;
 
+use WP_Hook;
 use WP_Post;
 
 /**
@@ -31,6 +32,56 @@ final class Dispatcher
      */
     private static array $removed_terms = [];
 
+    /**
+     * Relative permalink a post had BEFORE this request changed its slug or
+     * parent, keyed by post ID. Captured in `on_pre_post_update()`, the last
+     * moment the stored row is still the old one; emitted as `old_permalink`.
+     *
+     * @var array<int, string>
+     */
+    private static array $old_permalinks = [];
+
+    /**
+     * Options and menu payloads awaiting dispatch. They used to be sent from
+     * their hook; they are now queued so `flush()` can attach the GraphQL purge
+     * facts collected over the whole request. Purge-then-dispatch ordering for
+     * `options.saved` is preserved — the purge still happens in the hook.
+     *
+     * @var list<array<string, mixed>>
+     */
+    private static array $queued = [];
+
+    /**
+     * WPGraphQL Smart Cache purge facts collected during this request from its
+     * `graphql_purge` / `wpgraphql_cache_purge_all` actions.
+     *
+     * @var list<string>
+     */
+    private static array $purge_keys = [];
+
+    /** @var list<string> */
+    private static array $purge_events = [];
+
+    private static bool $purge_all = false;
+
+    /**
+     * Nesting depth of `perimetre_core_webhooks_suspend()` calls.
+     */
+    private static int $suspend_depth = 0;
+
+    /**
+     * Set between `import_start` and `import_end`.
+     */
+    private static bool $importing = false;
+
+    /**
+     * Post events swallowed while webhooks were suspended, reported as ONE
+     * `import.completed` event instead of a webhook per post.
+     *
+     * @var array{post_types: array<string, true>, post_ids: array<int, true>}
+     */
+    private static array $suppressed = ['post_types' => [], 'post_ids' => []];
+
     /** @var array<string, string> */
     private const STATUS_MAP = [
         'publish' => 'publish',
@@ -49,6 +100,8 @@ final class Dispatcher
         // REMOVED, which `get_the_terms()` can no longer see once the save is
         // over. Priority 10 with 6 args — WordPress passes `$old_tt_ids` last.
         add_action('set_object_terms', [self::class, 'on_set_object_terms'], 10, 6);
+        // The old slug / parent is only knowable before the row is rewritten.
+        add_action('pre_post_update', [self::class, 'on_pre_post_update'], 10, 2);
         // Post payloads are built and sent here, not at transition time — see
         // `flush()`.
         add_action('shutdown', [self::class, 'flush'], 10, 0);
@@ -56,6 +109,84 @@ final class Dispatcher
         add_action('wp_update_nav_menu', [self::class, 'on_menu_save'], 10);
         add_action('wp_delete_nav_menu', [self::class, 'on_menu_delete'], 10);
         add_action('pre_delete_term', [self::class, 'cache_menu_before_delete'], 10, 2);
+        // WPGraphQL Smart Cache announces every key it evicts. Recording them
+        // is how term, media, user and menu-location changes — which have no
+        // hook of their own here — reach the frontend. No-ops without it.
+        add_action('graphql_purge', [self::class, 'on_graphql_purge'], 10, 2);
+        add_action('wpgraphql_cache_purge_all', [self::class, 'on_graphql_purge_all'], 10, 0);
+        // WordPress Importer brackets a run with these; one event instead of
+        // one webhook per imported post.
+        add_action('import_start', [self::class, 'on_import_start'], 10, 0);
+        add_action('import_end', [self::class, 'on_import_end'], 10, 0);
+    }
+
+    /**
+     * Pause per-post webhooks. Posts saved while suspended are collected and
+     * reported as a single `import.completed` event on `resume()`.
+     *
+     * Nestable: every `suspend()` needs a matching `resume()`. Prefer the
+     * `perimetre_core_webhooks_suspend()` / `perimetre_core_webhooks_resume()`
+     * helpers from procedural code such as a WP-CLI importer.
+     */
+    public static function suspend(): void
+    {
+        self::$suspend_depth++;
+    }
+
+    /**
+     * Counterpart of `suspend()`. When the outermost suspension ends, the
+     * collected posts are sent as one `import.completed` webhook.
+     */
+    public static function resume(): void
+    {
+        if (self::$suspend_depth === 0) {
+            return;
+        }
+
+        self::$suspend_depth--;
+
+        if (self::$suspend_depth === 0 && ! self::is_suspended()) {
+            self::flush_suppressed();
+        }
+    }
+
+    public static function on_import_start(): void
+    {
+        self::$importing = true;
+    }
+
+    public static function on_import_end(): void
+    {
+        self::$importing = false;
+
+        if (! self::is_suspended()) {
+            self::flush_suppressed();
+        }
+    }
+
+    /**
+     * Whether per-post webhooks are currently held back.
+     *
+     * True during `import_start` … `import_end`, while `WP_IMPORTING` is
+     * defined (the WordPress Importer and WP-CLI's `wp import` set it), and
+     * inside `suspend()` / `resume()`. Filterable for importers Core does not
+     * know about.
+     */
+    public static function is_suspended(): bool
+    {
+        $suspended = self::$suspend_depth > 0
+            || self::$importing
+            || (defined('WP_IMPORTING') && WP_IMPORTING);
+
+        /**
+         * Filters whether per-post webhooks are suspended for this request.
+         *
+         * Return true from a custom importer to collapse its saves into one
+         * `import.completed` event sent on `shutdown`.
+         *
+         * @param bool $suspended Whether webhooks are suspended.
+         */
+        return (bool) apply_filters('perimetre_core_webhook_suspended', $suspended);
     }
 
     public static function on_transition(string $new_status, string $old_status, WP_Post $post): void
@@ -85,6 +216,13 @@ final class Dispatcher
             return;
         }
 
+        // Importers save hundreds of posts in one run; collect instead of
+        // firing a webhook per post. See `flush_suppressed()`.
+        if (self::is_suspended()) {
+            self::record_suppressed($post);
+            return;
+        }
+
         $event_label = self::resolve_event_label($new_status, $old_status);
 
         // Buffered, not sent: the payload is built in `flush()` on `shutdown`.
@@ -110,6 +248,112 @@ final class Dispatcher
             'new_status' => $new_status,
             'payload'    => null,
         ];
+    }
+
+    /**
+     * Captures the permalink a post is about to lose, so the payload can report
+     * it as `old_permalink`.
+     *
+     * Fires just before `wp_insert_post()` rewrites the row, with `$data` as
+     * it is about to be stored. Only a slug or parent change moves the URL, so
+     * nothing is recorded otherwise — and only a published post has a live path
+     * worth telling a frontend to drop. The frontend needs this because the
+     * payload's `permalink` is the NEW path; without the old one, the page at
+     * the previous URL keeps serving from cache until it expires on time.
+     *
+     * @param array<string, mixed> $data Unslashed post data about to be written.
+     */
+    public static function on_pre_post_update(int $post_id, array $data): void
+    {
+        if (! Settings::can_dispatch()) {
+            return;
+        }
+
+        $before = get_post($post_id);
+        if (! $before instanceof WP_Post || $before->post_status !== 'publish') {
+            return;
+        }
+
+        if (! in_array($before->post_type, Settings::get_post_types(), true)) {
+            return;
+        }
+
+        $name   = isset($data['post_name']) && $data['post_name'] !== ''
+            ? (string) $data['post_name']
+            : $before->post_name;
+        $parent = isset($data['post_parent']) ? (int) $data['post_parent'] : (int) $before->post_parent;
+
+        if ($name === $before->post_name && $parent === (int) $before->post_parent) {
+            return;
+        }
+
+        // First capture wins: a request that re-saves the post keeps the path
+        // it had when the request started.
+        self::$old_permalinks[$post_id] ??= self::get_relative_permalink($before);
+    }
+
+    /**
+     * Records a key WPGraphQL Smart Cache just evicted.
+     *
+     * Smart Cache fires `graphql_purge` with the cache key (a Relay global ID
+     * such as `cG9zdDo0Mg==`, or a list key such as `list:post`), the event
+     * that caused it and the GraphQL endpoint host. Keys are forwarded as-is
+     * — Core reports what WordPress knows and leaves mapping them to cache tags
+     * to the frontend.
+     *
+     * Ignored while suspended: an import purges far more than any receiver
+     * wants itemised, and `import.completed` tells it to revalidate broadly.
+     */
+    public static function on_graphql_purge(mixed $key, mixed $event = null): void
+    {
+        if (! is_string($key) || $key === '' || self::is_suspended()) {
+            return;
+        }
+
+        self::$purge_keys[] = $key;
+
+        if (is_string($event) && $event !== '') {
+            self::$purge_events[] = $event;
+        }
+    }
+
+    public static function on_graphql_purge_all(): void
+    {
+        // Core fires this hook itself from `purge_graphql_cache()`; without
+        // Smart Cache listening nothing was actually purged, so don't claim it.
+        if (self::is_suspended() || ! self::smart_cache_listens()) {
+            return;
+        }
+
+        self::$purge_all = true;
+    }
+
+    /**
+     * Whether something other than this dispatcher listens to Smart Cache's
+     * purge-all hook — in practice, whether WPGraphQL Smart Cache is active.
+     *
+     * `has_action()` alone no longer answers that: `register()` adds Core's own
+     * `on_graphql_purge_all()` recorder to the hook, which would make the check
+     * always true and report `purge_all: true` for a purge that never happened.
+     */
+    private static function smart_cache_listens(): bool
+    {
+        global $wp_filter;
+
+        $hook = $wp_filter['wpgraphql_cache_purge_all'] ?? null;
+        if (! $hook instanceof WP_Hook) {
+            return false;
+        }
+
+        foreach ($hook->callbacks as $callbacks) {
+            foreach ($callbacks as $callback) {
+                if (($callback['function'] ?? null) !== [self::class, 'on_graphql_purge_all']) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -185,13 +429,24 @@ final class Dispatcher
      */
     public static function flush(): void
     {
-        $pending = self::$pending;
-        $removed = self::$removed_terms;
+        $pending        = self::$pending;
+        $removed        = self::$removed_terms;
+        $old_permalinks = self::$old_permalinks;
+        $queued         = self::$queued;
+        $purge          = self::take_purge_facts();
 
         // Cleared before dispatching so a fatal or a re-entrant `flush()`
         // cannot send the same webhooks twice.
-        self::$pending = [];
-        self::$removed_terms = [];
+        self::$pending        = [];
+        self::$removed_terms  = [];
+        self::$old_permalinks = [];
+        self::$queued         = [];
+
+        // `WP_IMPORTING` runs, or an importer that never fired `import_end`:
+        // the collected posts go out as one event here instead.
+        self::flush_suppressed();
+
+        $sent = 0;
 
         foreach ($pending as $post_id => $entry) {
             $payload = $entry['payload'];
@@ -217,8 +472,112 @@ final class Dispatcher
                 $payload['taxonomies_removed'] = $removed[$post_id];
             }
 
-            self::dispatch($payload);
+            // Null when the path did not move. Trashing rewrites the slug to
+            // `…__trashed`, but `permalink` already reports the pre-trash path,
+            // so the two are equal and nothing is reported.
+            $old_permalink = $old_permalinks[$post_id] ?? null;
+            $payload['old_permalink'] = $old_permalink !== null && $old_permalink !== $payload['permalink']
+                ? $old_permalink
+                : null;
+
+            self::dispatch($payload + $purge);
+            $sent++;
         }
+
+        foreach ($queued as $payload) {
+            self::dispatch($payload + $purge);
+            $sent++;
+        }
+
+        // Something was purged but nothing above explains it — a term edit, a
+        // media edit, a user profile update. This is the only signal the
+        // frontend gets for those.
+        if ($sent === 0 && ($purge['purge_keys'] !== [] || $purge['purge_all'])) {
+            self::dispatch_cache_purged($purge);
+        }
+    }
+
+    /**
+     * Snapshot and reset the purge facts, shaped for merging into a payload.
+     *
+     * @return array{purge_keys: list<string>, purge_events: list<string>, purge_all: bool}
+     */
+    private static function take_purge_facts(): array
+    {
+        $facts = [
+            'purge_keys'   => array_values(array_unique(self::$purge_keys)),
+            'purge_events' => array_values(array_unique(self::$purge_events)),
+            'purge_all'    => self::$purge_all,
+        ];
+
+        self::$purge_keys   = [];
+        self::$purge_events = [];
+        self::$purge_all    = false;
+
+        return $facts;
+    }
+
+    /**
+     * @param array{purge_keys: list<string>, purge_events: list<string>, purge_all: bool} $purge
+     */
+    private static function dispatch_cache_purged(array $purge): void
+    {
+        if (! Settings::can_dispatch()) {
+            return;
+        }
+
+        if (! in_array('purge', Settings::get_events(), true)) {
+            return;
+        }
+
+        self::dispatch([
+            'event'        => 'cache.purged',
+            'purge_keys'   => $purge['purge_keys'],
+            'purge_events' => $purge['purge_events'],
+            'purge_all'    => $purge['purge_all'],
+            'timestamp'    => time(),
+        ]);
+    }
+
+    /**
+     * Remembers a post whose webhook was held back by `is_suspended()`.
+     */
+    private static function record_suppressed(WP_Post $post): void
+    {
+        self::$suppressed['post_types'][$post->post_type] = true;
+        self::$suppressed['post_ids'][$post->ID] = true;
+    }
+
+    /**
+     * Sends the posts collected while suspended as ONE `import.completed`
+     * event. No-op when nothing was collected.
+     *
+     * The gates were already applied per post when it was recorded (enabled,
+     * watched post type, watched event), so this event needs no checkbox of
+     * its own: it stands in for the per-post webhooks the site opted into.
+     */
+    private static function flush_suppressed(): void
+    {
+        $post_types = array_keys(self::$suppressed['post_types']);
+        $post_ids   = array_keys(self::$suppressed['post_ids']);
+
+        self::$suppressed = ['post_types' => [], 'post_ids' => []];
+
+        if ($post_ids === []) {
+            return;
+        }
+
+        if (! Settings::can_dispatch()) {
+            return;
+        }
+
+        self::dispatch([
+            'event'      => 'import.completed',
+            'post_types' => $post_types,
+            'post_ids'   => $post_ids,
+            'count'      => count($post_ids),
+            'timestamp'  => time(),
+        ]);
     }
 
     public static function on_delete(int $post_id, WP_Post $post): void
@@ -240,6 +599,11 @@ final class Dispatcher
         }
 
         if (! in_array('delete', Settings::get_events(), true)) {
+            return;
+        }
+
+        if (self::is_suspended()) {
+            self::record_suppressed($post);
             return;
         }
 
@@ -296,11 +660,18 @@ final class Dispatcher
         // fresh data instead of a stale Smart Cache response.
         self::purge_graphql_cache($page_slug);
 
-        self::dispatch([
+        // The purge above still happens during an import; only the event is
+        // dropped — `import.completed` tells the frontend to revalidate broadly.
+        if (self::is_suspended()) {
+            return;
+        }
+
+        // Queued, not sent: `flush()` attaches the purge facts on `shutdown`.
+        self::$queued[] = [
             'event'        => 'options.saved',
             'options_page' => $page_slug,
             'timestamp'    => time(),
-        ]);
+        ];
     }
 
     /**
@@ -349,8 +720,8 @@ final class Dispatcher
      * frontend even after the revalidation webhook fires. Firing the plugin's
      * documented purge-all hook clears those entries.
      *
-     * No-op when WPGraphQL Smart Cache isn't installed (the action is
-     * unregistered), so this stays safe on standard WP sites.
+     * No-op when WPGraphQL Smart Cache isn't installed (nothing but Core's own
+     * recorder listens to the action), so this stays safe on standard WP sites.
      *
      * @param string $page_slug The ACF options page slug that was saved.
      */
@@ -368,7 +739,7 @@ final class Dispatcher
             return;
         }
 
-        if (! has_action('wpgraphql_cache_purge_all')) {
+        if (! self::smart_cache_listens()) {
             return;
         }
 
@@ -414,18 +785,23 @@ final class Dispatcher
             return;
         }
 
+        if (self::is_suspended()) {
+            return;
+        }
+
         $menu = wp_get_nav_menu_object($menu_id) ?: (self::$menu_cache[$menu_id] ?? null);
         if (! $menu) {
             return;
         }
 
-        self::dispatch([
+        // Queued, not sent: `flush()` attaches the purge facts on `shutdown`.
+        self::$queued[] = [
             'event'     => $event,
             'menu_id'   => $menu_id,
             'menu_name' => $menu->name,
             'menu_slug' => $menu->slug,
             'timestamp' => time(),
-        ]);
+        ];
     }
 
     private static function resolve_event_label(string $new_status, string $old_status): string
@@ -466,17 +842,28 @@ final class Dispatcher
         ?string $old_status = null,
         ?string $new_status = null,
     ): array {
+        $descendants = self::get_descendants($post);
+
         $payload = [
-            'event'      => $event,
-            'post_id'    => $post->ID,
-            'post_type'  => $post->post_type,
-            'post_slug'  => $post->post_name,
-            'post_title' => $post->post_title,
-            'permalink'  => self::get_relative_permalink($post),
-            'language'   => self::get_language($post->ID),
-            'taxonomies' => self::get_taxonomies($post),
-            'timestamp'  => time(),
+            'event'         => $event,
+            'post_id'       => $post->ID,
+            'post_type'     => $post->post_type,
+            'post_slug'     => $post->post_name,
+            'post_title'    => $post->post_title,
+            'permalink'     => self::get_relative_permalink($post),
+            // Filled in by `flush()`, which holds the captured old path.
+            'old_permalink' => null,
+            'language'      => self::get_language($post->ID),
+            'translations'  => self::get_translations($post),
+            'taxonomies'    => self::get_taxonomies($post),
+            'descendants'   => $descendants['ids'],
+            'embedders'     => self::get_embedders($post),
+            'timestamp'     => time(),
         ];
+
+        if ($descendants['truncated']) {
+            $payload['descendants_truncated'] = true;
+        }
 
         if ($old_status !== null && $new_status !== null) {
             $payload['old_status'] = $old_status;
@@ -484,6 +871,156 @@ final class Dispatcher
         }
 
         return $payload;
+    }
+
+    /**
+     * The other-language versions of a post, under WPML.
+     *
+     * A translated page links to its siblings (language switcher, hreflang),
+     * so a change to one — its slug above all — must revalidate the others.
+     * Only published translations are listed: a draft has no live path to
+     * revalidate. Empty when WPML is inactive or the post stands alone.
+     *
+     * @return list<array{post_id: int, language: string, permalink: string}>
+     */
+    private static function get_translations(WP_Post $post): array
+    {
+        if (! has_filter('wpml_element_trid') || ! has_filter('wpml_get_element_translations')) {
+            return [];
+        }
+
+        $element_type = 'post_' . $post->post_type;
+
+        $trid = apply_filters('wpml_element_trid', null, $post->ID, $element_type);
+        if (! $trid) {
+            return [];
+        }
+
+        $translations = apply_filters('wpml_get_element_translations', null, $trid, $element_type);
+        if (! is_array($translations)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($translations as $translation) {
+            $translation_id = (int) ($translation->element_id ?? 0);
+            if ($translation_id === 0 || $translation_id === $post->ID) {
+                continue;
+            }
+
+            $translated = get_post($translation_id);
+            if (! $translated instanceof WP_Post || $translated->post_status !== 'publish') {
+                continue;
+            }
+
+            $result[] = [
+                'post_id'   => $translation_id,
+                'language'  => (string) ($translation->language_code ?? ''),
+                // WPML's `post_link` filter resolves the URL in the post's OWN
+                // language, so no language switch is needed here.
+                'permalink' => self::get_relative_permalink($translated),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * IDs of the published descendants of a hierarchical post, every level
+     * down.
+     *
+     * A child page's URL embeds its parents' slugs, so renaming or moving a
+     * parent moves every page beneath it — and only WordPress can enumerate
+     * them. Walked breadth-first with one query per level, capped so a
+     * pathological tree cannot stall `shutdown`. Empty for non-hierarchical
+     * post types.
+     *
+     * @return array{ids: list<int>, truncated: bool}
+     */
+    private static function get_descendants(WP_Post $post): array
+    {
+        if (! is_post_type_hierarchical($post->post_type)) {
+            return ['ids' => [], 'truncated' => false];
+        }
+
+        /**
+         * Filters how many descendant IDs a post payload may carry.
+         *
+         * When the tree is larger, the list is cut and the payload carries
+         * `descendants_truncated: true` so the frontend can fall back to a
+         * broader revalidation.
+         *
+         * @param int      $limit Maximum number of descendant IDs. Default 500.
+         * @param \WP_Post $post  The post being reported.
+         */
+        $limit = max(0, (int) apply_filters('perimetre_core_webhook_descendants_limit', 500, $post));
+
+        $ids       = [];
+        $truncated = false;
+        $parents   = [$post->ID];
+
+        while ($parents !== [] && ! $truncated) {
+            $children = get_posts([
+                'post_type'              => $post->post_type,
+                'post_status'            => 'publish',
+                'post_parent__in'        => $parents,
+                'fields'                 => 'ids',
+                // One more than the remaining budget tells us the cut happened.
+                'posts_per_page'         => $limit - count($ids) + 1,
+                'orderby'                => 'ID',
+                'order'                  => 'ASC',
+                'no_found_rows'          => true,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+            ]);
+
+            $children = array_map('intval', $children);
+
+            if (count($ids) + count($children) > $limit) {
+                $children  = array_slice($children, 0, $limit - count($ids));
+                $truncated = true;
+            }
+
+            $ids     = [...$ids, ...$children];
+            $parents = $children;
+        }
+
+        return ['ids' => $ids, 'truncated' => $truncated];
+    }
+
+    /**
+     * IDs of the posts that embed this one — a product showing a document, a
+     * landing page pulling in a testimonial.
+     *
+     * Core cannot know a project's relationships, so this is a filter with an
+     * empty default: Project Core answers it from its own ACF relationship or
+     * meta queries.
+     *
+     * @return list<int>
+     */
+    private static function get_embedders(WP_Post $post): array
+    {
+        /**
+         * Filters the IDs of posts that embed the saved post.
+         *
+         * @param list<int> $embedders Post IDs. Default empty.
+         * @param int       $post_id   The saved post's ID.
+         * @param \WP_Post  $post      The saved post.
+         */
+        $embedders = apply_filters('perimetre_core_webhook_embedders', [], $post->ID, $post);
+
+        if (! is_array($embedders)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach (array_unique(array_map('intval', $embedders)) as $id) {
+            if ($id > 0 && $id !== $post->ID) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
     }
 
     private static function get_relative_permalink(WP_Post $post): string
