@@ -459,7 +459,7 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
 | Secret Token | — | Sent as a `Bearer` token in the `Authorization` header on every request. |
 | Watched Post Types | All public types | Which post types trigger webhooks. Leave empty to watch all. |
 | Watched Events | Publish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates, GraphQL cache purges). |
-| Request Timeout (s) | 5 | HTTP timeout (1–30 seconds). Requests are non-blocking. |
+| Request Timeout (s) | 5 | HTTP timeout (1–30 seconds), per URL. Requests are sent after the response reaches the editor — see [Failed Deliveries](#failed-deliveries). |
 
 The plugin **reports facts WordPress knows at save time**. It never computes frontend cache tags or paths beyond the post's own permalink — mapping `descendants`, `translations`, `purge_keys` and the rest onto `revalidateTag` / `revalidatePath` calls is the receiver's job, because only the frontend knows how it tagged its caches.
 
@@ -598,6 +598,17 @@ try {
 ```
 
 The helpers nest (every `suspend()` needs a matching `resume()`). An importer that cannot call them can return `true` from the `perimetre_core_webhook_suspended` filter instead; the batch then goes out on `shutdown`.
+
+### Failed Deliveries
+
+Webhooks are sent at the very end of the request, after the editor already has their response (`fastcgi_finish_request()` under PHP-FPM, `litespeed_finish_request()` on LiteSpeed), as **blocking** requests so each result can be checked. A save is no slower than before. Without either function (WP-CLI, mod_php) each URL waits up to the timeout.
+
+A request that errors (timeout, DNS, TLS) or returns a non-2xx status is a failed delivery. The frontend keeps serving stale content, so it is reported:
+
+- **Sentry** — when the [wp-sentry](https://github.com/stayallive/wp-sentry) plugin is active, one `Revalidation webhook failed` Issue per event type (fingerprint `revalidation-webhook-failed` + event), with a `webhook` context of `event`, `host` and `reason`. Only the host is sent, never the full URL. Nothing to configure.
+- **Action** — `perimetre_core_webhook_failed` fires for every failure with `(string $event, string $host, string $reason)`, for projects that log or alert another way.
+
+Failed deliveries are not retried.
 
 ### Webhook Filters
 
@@ -804,13 +815,18 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.4.0**
+**2.5.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.5.0
+
+- **Failed webhooks are now reported.** Webhooks used to go out non-blocking, so WordPress never saw the response: a frontend that rejected or missed a revalidation left stale content and nobody heard about it. Payloads are now queued and sent on `shutdown` at the last priority, after the response is handed to the editor (`fastcgi_finish_request()` / `litespeed_finish_request()`), as blocking requests. A WP error or non-2xx response fires the new `perimetre_core_webhook_failed` action `(event, host, reason)` and, with wp-sentry active, raises a `Revalidation webhook failed` Sentry Issue fingerprinted per event type, carrying the URL's host only. No payload, event or setting changed. See [Failed Deliveries](#failed-deliveries).
+  - Where neither finish function exists (WP-CLI, mod_php), each URL now waits up to the configured timeout.
 
 ### 2.4.0
 
