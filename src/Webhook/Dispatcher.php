@@ -16,6 +16,16 @@ final class Dispatcher
     private static array $menu_cache = [];
 
     /**
+     * Payloads ready to send, in order. `dispatch()` only appends here;
+     * `send_outbox()` sends them at the very end of the request. Kept apart
+     * because `flush_suppressed()` can dispatch mid-request (`resume()`,
+     * `import_end`), where a blocking request would stall the caller.
+     *
+     * @var list<array<string, mixed>>
+     */
+    private static array $outbox = [];
+
+    /**
      * Post events awaiting dispatch, keyed by post ID so repeated saves of the
      * same post within one request collapse into a single webhook. See `flush()`.
      *
@@ -105,6 +115,10 @@ final class Dispatcher
         // Post payloads are built and sent here, not at transition time — see
         // `flush()`.
         add_action('shutdown', [self::class, 'flush'], 10, 0);
+        // The HTTP requests go out last, after every other shutdown callback,
+        // because sending them hands the response back to the browser first —
+        // see `send_outbox()`.
+        add_action('shutdown', [self::class, 'send_outbox'], PHP_INT_MAX, 0);
         add_action('acf/save_post', [self::class, 'on_options_save'], 20);
         add_action('wp_update_nav_menu', [self::class, 'on_menu_save'], 10);
         add_action('wp_delete_nav_menu', [self::class, 'on_menu_delete'], 10);
@@ -1142,22 +1156,112 @@ final class Dispatcher
     }
 
     /**
+     * Queues a payload for every configured URL. Sent by `send_outbox()`.
+     *
      * @param array<string, mixed> $payload
      */
     private static function dispatch(array $payload): void
     {
-        $args = [
-            'body'     => wp_json_encode($payload),
-            'headers'  => [
-                'Content-Type'  => 'application/json',
-                'Authorization' => 'Bearer ' . Settings::get_secret(),
-            ],
-            'timeout'  => Settings::get_timeout(),
-            'blocking' => false,
-        ];
+        self::$outbox[] = $payload;
+    }
 
-        foreach (Settings::get_urls() as $url) {
-            wp_remote_post($url, $args);
+    /**
+     * Sends the queued payloads and reports every request that failed.
+     *
+     * The requests are BLOCKING so the result can be checked: a non-blocking
+     * send never sees the response, so a frontend that rejects or misses the
+     * webhook leaves stale content behind and nobody hears about it. To keep
+     * the editor's save as fast as before, the response is handed to the
+     * browser first (`fastcgi_finish_request()` under PHP-FPM, LiteSpeed's
+     * equivalent), then the requests run with nobody waiting on them. Without
+     * either function — WP-CLI, mod_php — the request waits up to the timeout
+     * per URL, as the old non-blocking send could on a slow DNS lookup.
+     */
+    public static function send_outbox(): void
+    {
+        $outbox = self::$outbox;
+        // Cleared first so a re-entrant call cannot send the same payloads twice.
+        self::$outbox = [];
+
+        if ($outbox === []) {
+            return;
         }
+
+        $urls = Settings::get_urls();
+        if ($urls === []) {
+            return;
+        }
+
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } elseif (function_exists('litespeed_finish_request')) {
+            litespeed_finish_request();
+        }
+
+        $headers = [
+            'Content-Type'  => 'application/json',
+            'Authorization' => 'Bearer ' . Settings::get_secret(),
+        ];
+        $timeout = Settings::get_timeout();
+
+        foreach ($outbox as $payload) {
+            $body = wp_json_encode($payload);
+
+            foreach ($urls as $url) {
+                $response = wp_remote_post($url, [
+                    'body'     => $body,
+                    'headers'  => $headers,
+                    'timeout'  => $timeout,
+                    'blocking' => true,
+                ]);
+
+                $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+                if ($code >= 200 && $code < 300) {
+                    continue;
+                }
+
+                $reason = is_wp_error($response) ? $response->get_error_message() : 'HTTP ' . $code;
+                $event  = is_string($payload['event'] ?? null) ? $payload['event'] : 'unknown';
+
+                self::report_failure($event, $url, $reason);
+            }
+        }
+    }
+
+    /**
+     * Reports a failed webhook to Sentry as an Issue: stale content on the
+     * frontend is broken output, even though the editor's save succeeded.
+     *
+     * One issue per event type (the fingerprint), so a frontend that is down
+     * for an hour raises one alert, not one per save. Only the URL's host is
+     * attached — the path or query may carry a secret. No-op without the
+     * wp-sentry plugin.
+     *
+     * Projects can also hook `perimetre_core_webhook_failed` (event, host,
+     * reason) to log or alert another way.
+     */
+    private static function report_failure(string $event, string $url, string $reason): void
+    {
+        $host = (string) wp_parse_url($url, PHP_URL_HOST);
+
+        do_action('perimetre_core_webhook_failed', $event, $host, $reason);
+
+        if (! function_exists('wp_sentry_safe')) {
+            return;
+        }
+
+        wp_sentry_safe(static function ($hub) use ($event, $host, $reason): void {
+            /** @var \Sentry\State\HubInterface $hub */
+            $hub->withScope(static function ($scope) use ($hub, $event, $host, $reason): void {
+                /** @var \Sentry\State\Scope $scope */
+                $scope->setContext('webhook', [
+                    'event'  => $event,
+                    'host'   => $host,
+                    'reason' => $reason,
+                ]);
+                $scope->setFingerprint(['revalidation-webhook-failed', $event]);
+                $hub->captureMessage('Revalidation webhook failed', \Sentry\Severity::error());
+            });
+        });
     }
 }
