@@ -17,6 +17,22 @@ final class Settings
 
     private const FIELD_GROUP_KEY = 'group_perimetre_webhooks';
 
+    /**
+     * ACFML's "Expert" field group mode: the only mode that honours each
+     * field's own `wpml_cf_preferences` instead of deriving it from field type.
+     */
+    public const ACFML_GROUP_MODE = 'advanced';
+
+    /**
+     * Watched Events checked on a site that never saved the settings page:
+     * the post events that make a page appear, change, disappear or go away.
+     * Options, menu and purge stay opt-in; {@see SetupNotice} flags them.
+     */
+    public const DEFAULT_EVENTS = ['publish', 'draft', 'trash', 'delete'];
+
+    /** WPML_IGNORE_CUSTOM_FIELD — "Don't translate". */
+    private const WPML_DONT_TRANSLATE = 0;
+
     /** @var array<string, mixed>|null */
     private static ?array $options = null;
 
@@ -63,7 +79,8 @@ final class Settings
                     ],
                 ],
             ],
-            'fields' => [
+            'acfml_field_group_mode' => self::ACFML_GROUP_MODE,
+            'fields' => self::language_independent([
                 [
                     'key'           => 'field_perimetre_webhook_enabled',
                     'name'          => 'perimetre_webhook_enabled',
@@ -132,16 +149,8 @@ final class Settings
                     'name'              => 'perimetre_webhook_events',
                     'label'             => __('Watched Events', 'perimetre-core'),
                     'type'              => 'checkbox',
-                    'choices'           => [
-                        'publish' => __('Publish / Update', 'perimetre-core'),
-                        'draft'   => __('Draft', 'perimetre-core'),
-                        'trash'   => __('Trash', 'perimetre-core'),
-                        'delete'  => __('Permanent Delete', 'perimetre-core'),
-                        'options' => __('ACF Options Saved', 'perimetre-core'),
-                        'menu'    => __('Menu Saved or Deleted', 'perimetre-core'),
-                        'purge'   => __('GraphQL Cache Purged (WPGraphQL Smart Cache)', 'perimetre-core'),
-                    ],
-                    'default_value'     => ['publish', 'trash', 'delete'],
+                    'choices'           => self::event_choices(),
+                    'default_value'     => self::DEFAULT_EVENTS,
                     'instructions'      => __(
                         'GraphQL Cache Purged sends a cache.purged event when WPGraphQL Smart Cache evicts keys '
                         . 'that no post, options or menu webhook in the same request explains — term, media '
@@ -174,8 +183,56 @@ final class Settings
                         [['field' => 'field_perimetre_webhook_enabled', 'operator' => '==', 'value' => '1']],
                     ],
                 ],
-            ],
+            ]),
         ]);
+    }
+
+    /**
+     * Every Watched Event, value => label. With all of them on, every change
+     * Core can report reaches the frontend.
+     *
+     * @return array<string, string>
+     */
+    public static function event_choices(): array
+    {
+        return [
+            'publish' => __('Publish / Update', 'perimetre-core'),
+            'draft'   => __('Unpublish (back to Draft / Pending)', 'perimetre-core'),
+            'trash'   => __('Trash', 'perimetre-core'),
+            'delete'  => __('Permanent Delete', 'perimetre-core'),
+            'options' => __('ACF Options Saved', 'perimetre-core'),
+            'menu'    => __('Menu Saved or Deleted', 'perimetre-core'),
+            'purge'   => __('GraphQL Cache Purged (WPGraphQL Smart Cache)', 'perimetre-core'),
+        ];
+    }
+
+    /**
+     * Marks every field (sub-fields included) "Don't translate" for ACF
+     * Multilingual.
+     *
+     * These are site-wide technical settings with one value per site. Without
+     * an explicit preference ACFML picks one per field type from the site's
+     * WPML setup: choice fields become "Copy" and lock (🔒) outside the
+     * default language — or in every language on an oddly configured site —
+     * while text fields become "Translate" and store a separate, empty value
+     * per language. A no-op without ACFML.
+     *
+     * @param list<array<string, mixed>> $fields
+     * @return list<array<string, mixed>>
+     */
+    public static function language_independent(array $fields): array
+    {
+        foreach ($fields as $i => $field) {
+            $field['wpml_cf_preferences'] = self::WPML_DONT_TRANSLATE;
+
+            if (isset($field['sub_fields']) && is_array($field['sub_fields'])) {
+                $field['sub_fields'] = self::language_independent($field['sub_fields']);
+            }
+
+            $fields[$i] = $field;
+        }
+
+        return $fields;
     }
 
     private static function get_info_message(): string

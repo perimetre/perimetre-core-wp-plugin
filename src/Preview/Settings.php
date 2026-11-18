@@ -59,7 +59,8 @@ final class Settings
                     ],
                 ],
             ],
-            'fields' => [
+            'acfml_field_group_mode' => \Perimetre\Core\Webhook\Settings::ACFML_GROUP_MODE,
+            'fields' => \Perimetre\Core\Webhook\Settings::language_independent([
                 [
                     'key'          => 'field_perimetre_preview_secret',
                     'name'         => 'perimetre_preview_secret',
@@ -68,7 +69,7 @@ final class Settings
                     'instructions' => self::instructions(),
                     'readonly'     => defined(self::SECRET_CONST) ? 1 : 0,
                 ],
-            ],
+            ]),
         ]);
     }
 

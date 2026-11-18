@@ -458,7 +458,7 @@ Designed for headless on-demand revalidation (e.g. Next.js `revalidatePath` / `r
 | Webhook URLs | — | One or more endpoints that receive the POST request. Add as many as needed; every URL receives each event. |
 | Secret Token | — | Sent as a `Bearer` token in the `Authorization` header on every request. |
 | Watched Post Types | All public types | Which post types trigger webhooks. Leave empty to watch all. |
-| Watched Events | Publish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates, GraphQL cache purges). |
+| Watched Events | Publish, Unpublish, Trash, Delete | Which events trigger webhooks (post changes, options saves, menu updates, GraphQL cache purges). The default applies only to sites that never saved this page. While webhooks are enabled, this page warns admins when any Watched Event is off or WPGraphQL Smart Cache is inactive; see `perimetre_core_webhook_setup_notice`. |
 | Request Timeout (s) | 5 | HTTP timeout (1–30 seconds), per URL. Requests are sent after the response reaches the editor — see [Failed Deliveries](#failed-deliveries). |
 
 The plugin **reports facts WordPress knows at save time**. It never computes frontend cache tags or paths beyond the post's own permalink — mapping `descendants`, `translations`, `purge_keys` and the rest onto `revalidateTag` / `revalidatePath` calls is the receiver's job, because only the frontend knows how it tagged its caches.
@@ -469,7 +469,7 @@ The plugin **reports facts WordPress knows at save time**. It never computes fro
 |---|---|
 | `post.published` | Post transitions into `publish` from another status |
 | `post.updated` | Already-published post is saved again |
-| `post.drafted` | Post transitions to `draft` or `pending` |
+| `post.drafted` | Post leaves a public status (`publish`, `private`, `future`) for `draft` or `pending`. Creating, saving or un-trashing a draft sends nothing. Watched event: **Unpublish**. |
 | `post.privatized` | Post transitions to `private` |
 | `post.scheduled` | Post transitions to `future` |
 | `post.trashed` | Post transitions to `trash` |
@@ -618,6 +618,7 @@ Failed deliveries are not retried.
 | `perimetre_core_webhook_descendants_limit` | `500` | `(int $limit, WP_Post $post)` — cap on `descendants`; `descendants_truncated: true` when hit. |
 | `perimetre_core_webhook_suspended` | computed | `(bool $suspended)` — force per-post webhooks into one `import.completed`. |
 | `perimetre_core_webhook_reportable_taxonomy` | computed | `(bool $reportable, WP_Taxonomy $taxonomy)` — include or exclude a taxonomy from `taxonomies`. |
+| `perimetre_core_webhook_setup_notice` | every Watched Event | `(list<string>\|false $expected)` — the Watched Event values the settings-page warning expects on. Return a smaller list for a site that leaves an event off on purpose, or `false` to silence the warning (Smart Cache check included). |
 | `perimetre_core_purge_graphql_cache_on_options` | `true` | `(bool $purge, string $page_slug)` — whether an options save purges the whole Smart Cache. |
 
 Reporting embedders from Project Core — a product that shows a document via an ACF relationship field:
@@ -815,13 +816,19 @@ The old block in Project Core can remain under its project namespace — both co
 
 ## Current Version
 
-**2.5.0**
+**2.6.0**
 
 Update this when bumping the version in `perimetre-core.php`.
 
 ---
 
 ## Changelog
+
+### 2.6.0
+
+- **`post.drafted` fires only when a post is unpublished.** It used to fire on every transition into `draft` or `pending`, including creating a draft and every save of one, so sites turned the event off and then missed real unpublishes, leaving dead pages on the frontend. It now fires only when the old status is `publish`, `private` or `future`. **`post.drafted` no longer fires when a draft that was never published is created or saved** — a receiver that used it for that must use another signal. The checkbox is relabelled **Unpublish (back to Draft / Pending)**, with the same `draft` value, and is now on by default. That default only reaches sites that never saved the settings page.
+- **Setup warning for webhooks that will leave stale pages.** While webhooks are enabled, Settings > Perimetre Core shows admins (`manage_options`) a warning when WPGraphQL Smart Cache is inactive, or when any Watched Event is off. With all seven on, every change Core can report reaches the frontend; Options, Menu and GraphQL Cache Purged stay off by default and rely on this notice. A site that leaves one off on purpose narrows or silences it with the new `perimetre_core_webhook_setup_notice` filter. New class `Webhook\SetupNotice`; `Dispatcher::smart_cache_listens()` is now public so the notice can use it.
+- **Settings no longer lock under ACF Multilingual.** The webhook and preview settings fields gave ACFML no translation preference, so it picked one per field type from each site's WPML setup: toggles, repeaters and checkboxes became "Copy" and showed a lock (🔒) outside the default language — in every language on some sites — while text fields became "Translate" and kept a separate, empty value per language. Both field groups now use ACFML's Expert mode with every field set to "Don't translate", so each setting has one value per site, editable in any language. A no-op without ACFML.
 
 ### 2.5.0
 

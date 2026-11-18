@@ -92,6 +92,12 @@ final class Dispatcher
      */
     private static array $suppressed = ['post_types' => [], 'post_ids' => []];
 
+    /**
+     * Statuses Core groups as "published" in `STATUS_MAP`. Leaving one of
+     * these for a draft status is the only draft transition worth a webhook.
+     */
+    private const PUBLIC_STATUSES = ['publish', 'private', 'future'];
+
     /** @var array<string, string> */
     private const STATUS_MAP = [
         'publish' => 'publish',
@@ -230,6 +236,15 @@ final class Dispatcher
             return;
         }
 
+        // A draft or pending post has no public URL, so moving into one only
+        // matters when the post HAD one: unpublishing, unscheduling, making a
+        // private post a draft. Saving an existing draft, creating one, or
+        // restoring one from the trash changes nothing a frontend serves —
+        // without this, every draft autosave-to-save would flush the frontend.
+        if ($event_key === 'draft' && ! in_array($old_status, self::PUBLIC_STATUSES, true)) {
+            return;
+        }
+
         // Importers save hundreds of posts in one run; collect instead of
         // firing a webhook per post. See `flush_suppressed()`.
         if (self::is_suspended()) {
@@ -350,7 +365,7 @@ final class Dispatcher
      * `on_graphql_purge_all()` recorder to the hook, which would make the check
      * always true and report `purge_all: true` for a purge that never happened.
      */
-    private static function smart_cache_listens(): bool
+    public static function smart_cache_listens(): bool
     {
         global $wp_filter;
 

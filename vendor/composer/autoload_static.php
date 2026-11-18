@@ -40,6 +40,7 @@ class ComposerStaticInitb113275a202d8e3b5c32f974a7436223
         'Perimetre\\Core\\SEO\\MetaDescriptionVariable' => __DIR__ . '/../..' . '/src/SEO/MetaDescriptionVariable.php',
         'Perimetre\\Core\\Webhook\\Dispatcher' => __DIR__ . '/../..' . '/src/Webhook/Dispatcher.php',
         'Perimetre\\Core\\Webhook\\Settings' => __DIR__ . '/../..' . '/src/Webhook/Settings.php',
+        'Perimetre\\Core\\Webhook\\SetupNotice' => __DIR__ . '/../..' . '/src/Webhook/SetupNotice.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
