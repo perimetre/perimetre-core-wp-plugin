@@ -198,7 +198,7 @@ class HeroBlock extends AcfBlock
     protected function get_graphql_field_name(): string
     {
         // This becomes the field name on the block type in GraphQL:
-        // ... on MicroBirdHeroBlock { hero { heading } }
+        // ... on AcfMicroBirdHero { hero { heading } }
         return 'hero';
     }
 
@@ -239,7 +239,7 @@ class HeroBlock extends AcfBlock
 The block is then queryable in GraphQL:
 
 ```graphql
-... on MicroBirdHeroBlock {
+... on AcfMicroBirdHero {
   hero {
     heading
     subheading
@@ -249,7 +249,7 @@ The block is then queryable in GraphQL:
 
 ### InnerBlocks (optional)
 
-To allow nested child blocks inside an ACF block, override `get_inner_blocks_template()`. Returning a non-null template automatically bumps the block to `acf_block_version: 2` and merges `'jsx' => true` into `supports`, so the editor renders the InnerBlocks slot.
+To allow nested child blocks inside an ACF block, override `get_inner_blocks_template()`. Returning a non-null template merges `'jsx' => true` into `supports` (the block stays on `acf_block_version: 3`), so the editor renders the InnerBlocks slot.
 
 ```php
 protected function get_inner_blocks_template(): ?array
@@ -332,7 +332,7 @@ class CalloutBlock extends NativeBlock
 The `block.json` in `blocks/callout/` defines all attributes. These are automatically exposed in GraphQL via WPGraphQL Content Blocks under `attributes`:
 
 ```graphql
-... on MicroBirdCalloutBlock {
+... on MicroBirdCallout {
   attributes {
     message
     type
@@ -784,7 +784,7 @@ The one visible change on such a site is a new **Preview secret** field on Setti
 | Concept | Convention | Example |
 |---|---|---|
 | Block namespace | Plugin slug | `perimetre/hero`, `micro-bird/callout` |
-| GraphQL type | PascalCase from namespace | `PerimetreHeroBlock`, `MicroBirdCalloutBlock` |
+| GraphQL type | Set by WPGraphQL from the registered block name, PascalCased: ACF blocks get the `acf/` prefix | `AcfMicroBirdHero` (`acf/micro-bird-hero`), `MicroBirdCallout` (`micro-bird/callout`) |
 | ACF field group name | camelCase | `hero`, `featuredPosts` |
 | Field names | camelCase | `heading`, `subheading`, `ctaLabel` |
 | Shared concept names | Consistent across all blocks | `heading` not `title` |
