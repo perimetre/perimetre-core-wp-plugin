@@ -21,4 +21,5 @@ return array(
     'Perimetre\\Core\\SEO\\MetaDescriptionVariable' => $baseDir . '/src/SEO/MetaDescriptionVariable.php',
     'Perimetre\\Core\\Webhook\\Dispatcher' => $baseDir . '/src/Webhook/Dispatcher.php',
     'Perimetre\\Core\\Webhook\\Settings' => $baseDir . '/src/Webhook/Settings.php',
+    'Perimetre\\Core\\Webhook\\SetupNotice' => $baseDir . '/src/Webhook/SetupNotice.php',
 );

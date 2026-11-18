@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Perimetre Core
  * Description: Shared agency plugin for headless WordPress projects.
- * Version: 2.5.0
+ * Version: 2.6.0
  * Author: Perimetre
  * Author URI: https://perimetre.co
  * Requires at least: 6.4
@@ -18,7 +18,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('PERIMETRE_CORE_VERSION', '2.5.0');
+define('PERIMETRE_CORE_VERSION', '2.6.0');
 define('PERIMETRE_CORE_FILE', __FILE__);
 define('PERIMETRE_CORE_PATH', plugin_dir_path(__FILE__));
 define('PERIMETRE_CORE_URL', plugin_dir_url(__FILE__));
@@ -39,6 +39,7 @@ use Perimetre\Core\Preview\TokenAuth as PreviewTokenAuth;
 use Perimetre\Core\SEO\MetaDescriptionVariable;
 use Perimetre\Core\Webhook\Dispatcher as WebhookDispatcher;
 use Perimetre\Core\Webhook\Settings as WebhookSettings;
+use Perimetre\Core\Webhook\SetupNotice as WebhookSetupNotice;
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 
 /**
@@ -78,6 +79,7 @@ GraphQLCacheControl::register();
  */
 WebhookSettings::register();
 WebhookDispatcher::register();
+WebhookSetupNotice::register();
 
 /**
  * Headless frontend preview: point WordPress's Preview button at the frontend's
