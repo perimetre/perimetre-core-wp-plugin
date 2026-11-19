@@ -20,11 +20,21 @@ namespace Perimetre\Core\GraphQL;
  * Invalidation is TTL-only: Cloudways cannot purge by tag, so a cached
  * response serves stale up to its TTL after content changes. Keep TTLs short
  * (30–60s) for anything where staleness is user-visible.
+ *
+ * On Cloudways the TTL set here is not what expires the copy: Varnish appears
+ * to keep it for the server's Varnish Cache Lifetime setting instead of this
+ * `s-maxage`. The frontend enforces the TTL through the URL:
+ * `@perimetre/graphql` ≥ 0.7.0 adds `edgeWindow=floor(now / ttl)` next to
+ * `edgeCache`, so each TTL window is a new cache key. Set the server's Cache
+ * Lifetime to the option closest to 1 hour as a backstop.
  */
 final class CacheControl
 {
     /**
      * Upper bound on the requested TTL, in seconds.
+     *
+     * `@perimetre/graphql` mirrors it (`EDGE_CACHE_MAX_TTL`) to size its
+     * `edgeWindow`; change both together.
      */
     private const MAX_TTL = 3600;
 
